@@ -1,0 +1,111 @@
+name: Build Citron (Windows)
+concurrency:
+  group: build-windows-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: "Citron Build (Windows)"
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $vulkan_sdk_url = "https://sdk.lunarg.com/sdk/download/1.3.283.0/windows/VulkanSDK-1.3.283.0-Installer.exe"
+          Invoke-WebRequest -Uri $vulkan_sdk_url -OutFile VulkanSDK-Installer.exe
+          Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
+          echo "C:\VulkanSDK\1.3.283.0\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Clone Citron Source
+        shell: bash
+        run: git clone --recursive "https://git.citron-emu.org/citron/emulator.git" citron
+
+      - name: Get Nightly Version
+        id: version
+        working-directory: ./citron
+        shell: bash
+        run: |
+          git fetch --tags
+          VERSION=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Configure CMake
+        working-directory: ./citron
+        shell: cmd
+        run: |
+          cmake -B build -S . -G "Visual Studio 17 2022" -A x64 ^
+            -DCITRON_USE_BUNDLED_VCPKG=ON ^
+            -DCITRON_ENABLE_LTO=ON ^
+            -DCITRON_USE_BUNDLED_QT=ON ^
+            -DENABLE_QT6=ON ^
+            -DCITRON_TESTS=OFF ^
+            -DUSE_DISCORD_PRESENCE=ON
+
+      - name: Build Citron
+        working-directory: ./citron
+        shell: cmd
+        run: cmake --build build --config Release --parallel
+
+      - name: Package Windows Build
+        shell: pwsh
+        run: |
+          mkdir dist
+          echo "Creating final zip archive..."
+          Compress-Archive -Path ".\citron\build\bin\Release\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}.zip"
+
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Citron-Windows-Nightly
+          path: "dist/*.zip"
+
+  release:
+    if: ${{ github.ref_name == 'main' }}
+    name: "Release"
+    needs: [build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Citron-Windows-Nightly
+          path: .
+      - name: Get Version from Filename
+        shell: bash
+        run: |
+          FILENAME=$(ls *.zip)
+          VERSION=${FILENAME#Citron-windows-nightly-}
+          VERSION=${VERSION%.zip}
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+      - name: Delete Previous Release
+        run: gh release delete "nightly-windows" --repo "${{ github.repository }}" --cleanup-tag -y || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Continuous Build (Windows Nightly: ${{ env.APP_VERSION }})"
+          tag_name: "nightly-windows"
+          prerelease: true
+          files: "*.zip"
+
+      - name: Post to Discord
+        if: success()
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-windows"
+          DATE=$(date +'%Y-%m-%d')
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\":\"🪟 **New Windows Build Available!**\n\n📦 **Version:** \`${{ env.APP_VERSION }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\"}" \
+               https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb

@@ -1,0 +1,140 @@
+name: Build Citron (Linux)
+concurrency:
+  group: build-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: "${{ matrix.name }}"
+    runs-on: ${{ matrix.os }} # Use matrix to select the runner
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false # Allows all matrix jobs to complete
+      matrix:
+        include:
+          # --- x86_64 Builds ---
+          - name: "Citron Build (Normal x86_64)"
+            os: ubuntu-latest
+            arch_suffix: ""
+            build_arg: ""
+          - name: "Citron Build (Optimized x86_64)"
+            os: ubuntu-latest
+            arch_suffix: "_v3"
+            build_arg: "v3"
+          - name: "Citron Build (Normal PGO x86_64)"
+            os: ubuntu-latest
+            arch_suffix: "_pgo"
+            build_arg: "pgo"
+          - name: "Citron Build (Optimized PGO x86_64)"
+            os: ubuntu-latest
+            arch_suffix: "_v3_pgo"
+            build_arg: "v3-pgo"
+
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+
+    steps:
+      - name: Install Git
+        run: pacman -Syu --noconfirm --needed git
+
+      - name: Checkout Workflow Scripts
+        uses: actions/checkout@v4
+
+      - name: Checkout Upstream Source Code
+        run: git clone --recurse-submodules https://git.citron-emu.org/citron/emulator.git emulator
+
+      - name: Prepare Build Environment
+        run: |
+          mv get-dependencies.sh emulator/
+          mv build-citron.sh emulator/
+          mv package-citron.sh emulator/
+
+      - name: Add Git Safe Directory
+        working-directory: ./emulator
+        run: git config --global --add safe.directory "$PWD"
+
+      - name: Install dependencies
+        working-directory: ./emulator
+        run: chmod +x ./get-dependencies.sh && ./get-dependencies.sh
+
+      - name: Build Citron from source
+        working-directory: ./emulator
+        run: |
+          NPROC_VAL=$(nproc --all)
+          JOBS_VAL=$((NPROC_VAL > 4 ? 4 : NPROC_VAL))
+          chmod +x ./build-citron.sh
+          JOBS=${JOBS_VAL} DEVEL=true ./build-citron.sh ${{ matrix.build_arg }}
+
+      - name: Package AppImage with Correct Name
+        working-directory: ./emulator
+        run: |
+          GIT_SHA=$(git rev-parse --short HEAD)
+          
+          export APP_VERSION="${GIT_SHA}"
+          export VERSION="${GIT_SHA}"
+          export ARCH_SUFFIX="${{ matrix.arch_suffix }}"
+          export DEVEL="true"
+          
+          chmod +x ./package-citron.sh
+          ./package-citron.sh
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Artifacts${{ matrix.arch_suffix }}
+          path: emulator/dist/ 
+
+  release:
+    if: ${{ github.ref_name == 'main' }}
+    name: "release"
+    needs: [build]
+    permissions:
+      actions: read
+      security-events: write
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Upstream Repository
+        run: git clone https://git.citron-emu.org/citron/emulator.git .
+
+      - name: Set Version
+        id: version
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Artifacts*
+          merge-multiple: true
+          path: .
+
+      - name: Del Previous Release
+        run: gh release delete "nightly-linux" --repo "${GITHUB_REPOSITORY}" --cleanup-tag -y && sleep 5
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+        continue-on-error: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: "Continuous Build (Linux Nightly: ${{ steps.version.outputs.sha }})"
+          tag_name: "nightly-linux"
+          prerelease: true
+          draft: false
+          generate_release_notes: false
+          make_latest: false
+          files: |
+            *.AppImage*
+            *.tar.zst
+
+      - name: Post to Discord
+        if: success()
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-linux"
+          DATE=$(date +'%Y-%m-%d')
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3, PGO builds\"}" \
+               https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
