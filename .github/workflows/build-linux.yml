@@ -188,8 +188,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           echo "${{ steps.version.outputs.sha }}" > LATEST_VERSION
           git add LATEST_VERSION
-          git commit -m "Update LATEST_VERSION to ${{ steps.version.outputs.sha }} [skip ci]"
-          git push
+          git commit -m "Update LATEST_VERSION to ${{ steps.version.outputs.sha }} [skip ci]" || exit 0
+          # Pull with rebase and retry push to handle concurrent updates
+          for i in {1..5}; do
+            git pull --rebase origin main && git push && break || sleep 2
+          done
 
       - name: Post to Discord
         if: success()
