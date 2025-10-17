@@ -140,6 +140,15 @@ jobs:
           tag_name: "nightly-windows"
           prerelease: true
           files: "*.zip"
+          body: |
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
+            
+            This build is based on the latest Citron emulator source code from the upstream repository.
+            
+            **Build Details:**
+            - Platform: Windows (x64)
+            - Build Type: Release with Qt6 and LTO
+            - Date: $(date +'%Y-%m-%d')
 
       - name: Update LATEST_VERSION
         if: success()

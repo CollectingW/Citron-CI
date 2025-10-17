@@ -170,6 +170,16 @@ jobs:
           files: |
             *.AppImage*
             *.tar.zst
+          body: |
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
+            
+            This build is based on the latest Citron emulator source code from the upstream repository.
+            
+            **Build Details:**
+            - Platform: Linux (x86_64, x86_64_v3, PGO optimized)
+            - Format: AppImage + tar.zst packages
+            - Build Type: Release with optimizations
+            - Date: $(date +'%Y-%m-%d')
 
       - name: Update LATEST_VERSION
         if: success()

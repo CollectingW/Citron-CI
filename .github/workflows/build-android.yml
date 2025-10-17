@@ -162,6 +162,15 @@ jobs:
           tag_name: "nightly-android"
           prerelease: true
           files: "*.apk"
+          body: |
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
+            
+            This build is based on the latest Citron emulator source code from the upstream repository.
+            
+            **Build Details:**
+            - Platform: Android (arm64-v8a)
+            - Build Type: Release with LTO enabled
+            - Date: ${{ env.DATE }}
 
       - name: Update LATEST_VERSION
         if: success()
