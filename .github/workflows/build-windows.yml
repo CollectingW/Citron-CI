@@ -98,8 +98,18 @@ jobs:
         shell: pwsh
         run: |
           mkdir dist
-          echo "Creating final zip archive..."
-          Compress-Archive -Path ".\citron\build\bin\Release\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}.zip"
+          echo "Creating final zip archive (excluding .pdb files)..."
+          # Create a temporary directory with only the files we want
+          mkdir temp_package
+          Get-ChildItem ".\citron\build\bin\Release\" -Recurse | Where-Object { $_.Extension -ne ".pdb" } | ForEach-Object {
+            $relativePath = $_.FullName.Replace((Resolve-Path ".\citron\build\bin\Release\").Path, "").TrimStart('\')
+            $destPath = Join-Path ".\temp_package" $relativePath
+            $destDir = Split-Path $destPath -Parent
+            if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+            Copy-Item $_.FullName $destPath -Force
+          }
+          Compress-Archive -Path ".\temp_package\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}.zip"
+          Remove-Item ".\temp_package" -Recurse -Force
 
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
