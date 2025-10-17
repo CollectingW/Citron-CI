@@ -63,14 +63,6 @@ jobs:
             os: ubuntu-latest
             arch_suffix: "_v3"
             build_arg: "v3"
-          - name: "Citron Build (Normal PGO x86_64)"
-            os: ubuntu-latest
-            arch_suffix: "_pgo"
-            build_arg: "pgo"
-          - name: "Citron Build (Optimized PGO x86_64)"
-            os: ubuntu-latest
-            arch_suffix: "_v3_pgo"
-            build_arg: "v3-pgo"
 
     container: ghcr.io/pkgforge-dev/archlinux:latest
 
@@ -176,7 +168,7 @@ jobs:
             This build is based on the latest Citron emulator source code from the upstream repository.
             
             **Build Details:**
-            - Platform: Linux (x86_64, x86_64_v3, PGO optimized)
+            - Platform: Linux (x86_64, x86_64_v3)
             - Format: AppImage + tar.zst packages
             - Build Type: Release with optimizations
             - Date: $(date +'%Y-%m-%d')
@@ -200,5 +192,5 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-linux"
           DATE=$(date +'%Y-%m-%d')
           curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3, PGO builds\"}" \
+               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3 builds\"}" \
                https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
