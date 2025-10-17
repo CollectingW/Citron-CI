@@ -6,8 +6,45 @@ on:
     - cron: "0 12 * * *"
 
 jobs:
+  check-version:
+    name: Check if new version available
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      new_hash: ${{ steps.upstream.outputs.hash }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Get upstream commit hash
+        id: upstream
+        run: |
+          HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git HEAD | cut -f1 | cut -c1-7)
+          echo "hash=$HASH" >> $GITHUB_OUTPUT
+          echo "Upstream hash: $HASH"
+
+      - name: Get last built version
+        id: last_built
+        run: |
+          LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
+          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
+          echo "Last built hash: $LAST_HASH"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.hash }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "✅ New version detected - will build"
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No changes - skipping build"
+          fi
+
   build-android:
     name: Build Android APK
+    needs: [check-version]
+    if: needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
@@ -91,12 +128,16 @@ jobs:
 
   release-android:
     name: "Release Android Nightly"
-    needs: [build-android]
+    needs: [check-version, build-android]
+    if: needs.check-version.outputs.should_build == 'true'
     permissions:
       contents: write
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
@@ -121,6 +162,16 @@ jobs:
           tag_name: "nightly-android"
           prerelease: true
           files: "*.apk"
+
+      - name: Update LATEST_VERSION
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "${{ env.GIT_HASH }}" > LATEST_VERSION
+          git add LATEST_VERSION
+          git commit -m "Update LATEST_VERSION to ${{ env.GIT_HASH }} [skip ci]"
+          git push
 
       - name: Post to Discord
         if: success()
