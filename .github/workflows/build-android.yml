@@ -30,12 +30,29 @@ jobs:
           echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
           echo "Last built hash: $LAST_HASH"
 
+      - name: Check if release exists
+        id: release_check
+        run: |
+          if gh release view nightly-android --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release does not exist"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
       - name: Compare versions
         id: compare
         run: |
           if [ "${{ steps.upstream.outputs.hash }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "✅ New version detected - will build"
+          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "✅ No release exists - will build"
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
             echo "⏭️ No changes - skipping build"
