@@ -188,7 +188,7 @@ jobs:
             - Platform: Linux (x86_64, x86_64_v3)
             - Format: AppImage + tar.zst packages
             - Build Type: Release with optimizations
-            - Date: $(date +'%Y-%m-%d')
+            - Date: ${{ env.DATE }}
 
       - name: Update LATEST_VERSION
         if: success()
@@ -202,12 +202,3 @@ jobs:
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
-
-      - name: Post to Discord
-        if: success()
-        run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-linux"
-          DATE=$(date +'%Y-%m-%d')
-          curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3 builds\"}" \
-               https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
