@@ -90,7 +90,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools
+          sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl
 
       - name: Install Android SDK
         run: |
