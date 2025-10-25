@@ -36,7 +36,6 @@ jobs:
       - name: Check if release exists
         id: release_check
         run: |
-          # This check is now less critical but kept for the edge case of the very first build
           if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Release exists"
@@ -68,6 +67,8 @@ jobs:
     if: needs.check-version.outputs.should_build == 'true'
     runs-on: windows-latest
     timeout-minutes: 120
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
 
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +104,7 @@ jobs:
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_ENABLE_LTO=ON ^
             -DCITRON_USE_BUNDLED_QT=ON ^
-            -DENABLE_QT6=ON ^
+            -DENABLE_QT=ON ^
             -DCITRON_TESTS=OFF ^
             -DUSE_DISCORD_PRESENCE=ON ^
             -DCITRON_USE_AUTO_UPDATER=ON
@@ -118,7 +119,6 @@ jobs:
         run: |
           mkdir dist
           echo "Creating final zip archive (excluding .pdb files)..."
-          # Create a temporary directory with only the files we want
           mkdir temp_package
           Get-ChildItem ".\citron\build\bin\Release\" -Recurse | Where-Object { $_.Extension -ne ".pdb" } | ForEach-Object {
             $relativePath = $_.FullName.Replace((Resolve-Path ".\citron\build\bin\Release\").Path, "").TrimStart('\')
@@ -137,9 +137,9 @@ jobs:
           path: "dist/*.zip"
 
   release:
-    if: ${{ github.ref_name == 'main' }}
-    name: "Release"
+    name: "Release Windows Nightly"
     needs: [check-version, build]
+    if: needs.check-version.outputs.should_build == 'true' && github.ref_name == 'main'
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -147,32 +147,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
         with:
           name: Citron-Windows-Nightly
           path: .
-          
-      - name: Get Version from Filename
-        id: version # Give this step an ID
-        shell: bash
-        run: |
-          FILENAME=$(ls *.zip)
-          VERSION=${FILENAME#Citron-windows-nightly-}
-          VERSION=${VERSION%.zip}
-          echo "sha=${VERSION}" >> $GITHUB_OUTPUT
-          
-      - name: Generate Tag Name
-        id: tag
-        run: echo "name=nightly-windows-${{ github.run_number }}" >> $GITHUB_OUTPUT
-      
-      - name: Create GitHub Release
-        id: create_release # Give this step an ID
+
+      - name: Delete previous nightly release and tag
+        run: gh release delete "nightly-windows" --repo "${{ github.repository }}" --cleanup-tag -y || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create new nightly release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Continuous Build (Windows Nightly #${{ github.run_number }}: ${{ steps.version.outputs.sha }})"
-          tag_name: ${{ steps.tag.outputs.name }} # Use the new dynamic tag
+          name: "Continuous Build (Windows Nightly: ${{ needs.build.outputs.VERSION }})"
+          tag_name: "nightly-windows"
           prerelease: true
-          make_latest: true # Mark this as the latest release
           files: "*.zip"
           body: |
             **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
@@ -189,10 +180,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          echo "${{ steps.version.outputs.sha }}" > LATEST_VERSION
+          echo "${{ needs.build.outputs.VERSION }}" > LATEST_VERSION
           git add LATEST_VERSION
-          git commit -m "Update LATEST_VERSION to ${{ steps.version.outputs.sha }} [skip ci]" || exit 0
-          # Pull with rebase and retry push to handle concurrent updates
+          git commit -m "Update LATEST_VERSION to ${{ needs.build.outputs.VERSION }} [skip ci]" || exit 0
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
