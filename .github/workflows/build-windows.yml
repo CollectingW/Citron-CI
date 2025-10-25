@@ -106,7 +106,7 @@ jobs:
             -DENABLE_QT6=ON ^
             -DCITRON_TESTS=OFF ^
             -DUSE_DISCORD_PRESENCE=ON ^
-            -D CITRON_USE_AUTO_UPDATER=ON
+            -DCITRON_USE_AUTO_UPDATER=ON
 
       - name: Build Citron
         working-directory: ./citron
