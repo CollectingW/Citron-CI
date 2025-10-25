@@ -112,6 +112,12 @@ jobs:
           unzip -q android-ndk-r26b-linux.zip
           echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> $GITHUB_ENV
 
+      - name: Force vcpkg bootstrap and install OpenSSL
+        working-directory: ./citron_source/externals/vcpkg
+        run: |
+          ./bootstrap-vcpkg.sh
+          ./vcpkg install openssl:arm64-android
+
       - name: Configure CMake
         run: |
           cmake -B build-android -S citron_source \
