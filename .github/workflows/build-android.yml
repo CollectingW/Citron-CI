@@ -112,17 +112,13 @@ jobs:
           unzip -q android-ndk-r26b-linux.zip
           echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> $GITHUB_ENV
 
-      - name: Bootstrap vcpkg and Install All Dependencies
-        working-directory: ./citron_source
-        run: |
-          externals/vcpkg/bootstrap-vcpkg.sh
-          externals/vcpkg/vcpkg install --triplet arm64-android
-
       - name: Configure CMake
         run: |
           cmake -B build-android -S citron_source \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=citron_source/externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-30 \
             -DENABLE_QT=OFF \
@@ -203,7 +199,6 @@ jobs:
           echo "${{ env.GIT_HASH }}" > LATEST_VERSION
           git add LATEST_VERSION
           git commit -m "Update LATEST_VERSION to ${{ env.GIT_HASH }} [skip ci]" || exit 0
-          # Pull with rebase and retry push to handle concurrent updates
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
