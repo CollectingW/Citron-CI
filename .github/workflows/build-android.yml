@@ -122,7 +122,7 @@ jobs:
             -DANDROID_PLATFORM=android-30 \
             -DENABLE_QT=OFF \
             -DENABLE_SDL2=OFF \
-            -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_WEB_SERVICE=ON \
             -DCITRON_USE_BUNDLED_VCPKG=ON \
             -DCITRON_USE_BUNDLED_FFMPEG=ON \
             -DANDROID_ARM_NEON=ON \
