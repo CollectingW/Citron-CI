@@ -102,10 +102,12 @@ jobs:
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_ENABLE_LTO=ON ^
             -DCITRON_USE_BUNDLED_QT=ON ^
-            -DENABLE_QT6=ON ^
+            -DENABLE_QT=ON ^
             -DCITRON_TESTS=OFF ^
             -DUSE_DISCORD_PRESENCE=ON ^
-            -DCITRON_ENABLE_UPDATER=ON
+            -DENABLE_WEB_SERVICE=ON ^
+            -DENABLE_OPENSSL=ON ^
+            -DCITRON_USE_AUTO_UPDATER=ON
 
       - name: Build Citron
         working-directory: ./citron
