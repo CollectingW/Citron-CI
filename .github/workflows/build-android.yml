@@ -110,11 +110,6 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Patch CMakeLists.txt for Android Build
-        working-directory: ./citron_source
-        run: |
-          sed -i 's/option(ENABLE_OPENSSL "Enable OpenSSL backend for ISslConnection" ON)/option(ENABLE_OPENSSL "Enable OpenSSL backend for ISslConnection" \${DEFAULT_ENABLE_OPENSSL})/' CMakeLists.txt
-
       - name: Configure CMake
         run: |
           cmake -B build-android -S citron_source \
