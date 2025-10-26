@@ -62,7 +62,7 @@ jobs:
     name: Build Android APK
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
 
@@ -90,27 +90,30 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools
+          sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl
 
-      - name: Install Android SDK
+      - name: Install Android SDK Command-line Tools
         run: |
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip
           mkdir -p android-sdk/cmdline-tools
           mv cmdline-tools android-sdk/cmdline-tools/latest
+
+      - name: Set up Android Environment Variables
+        run: |
           echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
           echo "$PWD/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      - name: Accept Android SDK licenses and install components
+      - name: Accept Android SDK licenses and install NDK
         run: |
           yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Install Android NDK
+      - name: Patch CMakeLists.txt for Android Build
+        working-directory: ./citron_source
         run: |
-          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip
-          unzip -q android-ndk-r26b-linux.zip
-          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r26b" >> $GITHUB_ENV
+          sed -i 's/option(ENABLE_OPENSSL "Enable OpenSSL backend for ISslConnection" ON)/option(ENABLE_OPENSSL "Enable OpenSSL backend for ISslConnection" \${DEFAULT_ENABLE_OPENSSL})/' CMakeLists.txt
 
       - name: Configure CMake
         run: |
@@ -122,6 +125,7 @@ jobs:
             -DENABLE_QT=OFF \
             -DENABLE_SDL2=OFF \
             -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_OPENSSL=OFF \
             -DCITRON_USE_BUNDLED_VCPKG=ON \
             -DCITRON_USE_BUNDLED_FFMPEG=ON \
             -DANDROID_ARM_NEON=ON \
@@ -132,10 +136,10 @@ jobs:
           cmake --build build-android --config Release --parallel $(nproc)
 
       - name: Build APK with Gradle
+        working-directory: ./citron_source/src/android
         run: |
-          cd citron_source/src/android
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
-          ./gradlew assembleMainlineRelease
+          ./gradlew assembleMainlineRelease -Pcmake.args="-DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -197,7 +201,6 @@ jobs:
           echo "${{ env.GIT_HASH }}" > LATEST_VERSION
           git add LATEST_VERSION
           git commit -m "Update LATEST_VERSION to ${{ env.GIT_HASH }} [skip ci]" || exit 0
-          # Pull with rebase and retry push to handle concurrent updates
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
