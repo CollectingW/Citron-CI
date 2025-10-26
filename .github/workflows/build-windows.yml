@@ -102,7 +102,7 @@ jobs:
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_ENABLE_LTO=ON ^
             -DCITRON_USE_BUNDLED_QT=ON ^
-            -DENABLE_QT=ON ^
+            -DENABLE_QT6=ON ^
             -DCITRON_TESTS=OFF ^
             -DUSE_DISCORD_PRESENCE=ON ^
             -DENABLE_WEB_SERVICE=ON ^
