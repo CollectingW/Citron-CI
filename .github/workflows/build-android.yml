@@ -12,16 +12,34 @@ jobs:
     outputs:
       should_build: ${{ steps.compare.outputs.should_build }}
       new_hash: ${{ steps.upstream.outputs.hash }}
+      branch_name: ${{ steps.branch_check.outputs.branch_name }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
 
+      - name: Check if feature branch exists and get commit hash
+        id: branch_check
+        run: |
+          # Check if the feature branch exists
+          if git ls-remote --heads https://git.citron-emu.org/citron/emulator.git feat/vulkan-mobile-gpu-compatibility-layer | grep -q feat/vulkan-mobile-gpu-compatibility-layer; then
+            BRANCH_NAME="feat/vulkan-mobile-gpu-compatibility-layer"
+            HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git feat/vulkan-mobile-gpu-compatibility-layer | cut -f1 | cut -c1-7)
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "hash=$HASH" >> $GITHUB_OUTPUT
+            echo "✅ Using feature branch: $BRANCH_NAME (hash: $HASH)"
+          else
+            BRANCH_NAME="main"
+            HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git HEAD | cut -f1 | cut -c1-7)
+            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "hash=$HASH" >> $GITHUB_OUTPUT
+            echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME (hash: $HASH)"
+          fi
+
       - name: Get upstream commit hash
         id: upstream
         run: |
-          HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git HEAD | cut -f1 | cut -c1-7)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "Upstream hash: $HASH"
+          echo "hash=${{ steps.branch_check.outputs.hash }}" >> $GITHUB_OUTPUT
+          echo "Upstream hash: ${{ steps.branch_check.outputs.hash }}"
 
       - name: Get last built version
         id: last_built
@@ -65,10 +83,18 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
+      branch_name: ${{ needs.check-version.outputs.branch_name }}
 
     steps:
       - name: Clone Citron Source Code
-        run: git clone --recursive --depth 1 https://git.citron-emu.org/citron/emulator.git citron_source
+        run: |
+          if [ "${{ needs.check-version.outputs.branch_name }}" = "feat/vulkan-mobile-gpu-compatibility-layer" ]; then
+            echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
+            git clone --recursive --depth 1 -b feat/vulkan-mobile-gpu-compatibility-layer https://git.citron-emu.org/citron/emulator.git citron_source
+          else
+            echo "📦 Cloning main branch"
+            git clone --recursive --depth 1 https://git.citron-emu.org/citron/emulator.git citron_source
+          fi
 
       - name: Clean and Force-Update Submodules
         working-directory: ./citron_source
@@ -165,6 +191,7 @@ jobs:
         run: |
           echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
           echo "GIT_HASH=${{ needs.build-android.outputs.git_hash }}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${{ needs.build-android.outputs.branch_name }}" >> $GITHUB_ENV
           
       - name: Delete previous nightly release and tag
         run: gh release delete "nightly-android" --repo "${{ github.repository }}" --cleanup-tag -y || true
@@ -181,12 +208,13 @@ jobs:
           body: |
             **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
             
-            This build is based on the latest Citron emulator source code from the upstream repository.
+            This build is based on the latest Citron emulator source code from the **${{ env.BRANCH_NAME }}** branch.
             
             **Build Details:**
             - Platform: Android (arm64-v8a)
             - Build Type: Release with LTO enabled
             - Date: ${{ env.DATE }}
+            - Branch: ${{ env.BRANCH_NAME }}
 
       - name: Update LATEST_VERSION
         if: success()
@@ -204,6 +232,15 @@ jobs:
         if: success()
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-android"
+          if [ "${{ env.BRANCH_NAME }}" = "feat/vulkan-mobile-gpu-compatibility-layer" ]; then
+            BRANCH_EMOJI="🌿"
+            BRANCH_DESC="Mobile GPU Compatibility Layer"
+            EXPERIMENTAL_FEATURES="\n🔬 **Experimental Features:**\n• Qualcomm Adreno driver compatibility\n• ARM Mali driver compatibility\n• Samsung Xclipse driver compatibility\n• Enhanced mobile GPU stability"
+          else
+            BRANCH_EMOJI="📦"
+            BRANCH_DESC="Main Branch"
+            EXPERIMENTAL_FEATURES=""
+          fi
           curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🤖 **New Android Build Available!**\n\n📦 **Version:** \`${{ env.GIT_HASH }}\`\n📅 **Date:** ${{ env.DATE }}\n🔗 **Download:** $DOWNLOAD_URL\"}" \
+               -d "{\"content\":\"🤖 **New Android Build Available!**\n\n📦 **Version:** \`${{ env.GIT_HASH }}\`\n📅 **Date:** ${{ env.DATE }}\n$BRANCH_EMOJI **Branch:** $BRANCH_DESC$EXPERIMENTAL_FEATURES\n🔗 **Download:** $DOWNLOAD_URL\"}" \
                https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
