@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.compare.outputs.should_build }}
-      new_hash: ${{ steps.upstream.outputs.hash }}
+      new_hash: ${{ steps.upstream.outputs.hash_short }}
+      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
       branch_name: ${{ steps.branch_check.outputs.branch_name }}
     steps:
       - name: Checkout this repo
@@ -20,31 +21,37 @@ jobs:
       - name: Check if feature branch exists and get commit hash
         id: branch_check
         run: |
-          # Check if the feature branch exists
-          if git ls-remote --heads https://git.citron-emu.org/Citron/Emulator.git feat/vulkan-mobile-gpu-compatibility-layer | grep -q feat/vulkan-mobile-gpu-compatibility-layer; then
-            BRANCH_NAME="feat/vulkan-mobile-gpu-compatibility-layer"
-            HASH=$(git ls-remote https://git.citron-emu.org/Citron/Emulator.git feat/vulkan-mobile-gpu-compatibility-layer | cut -f1 | cut -c1-7)
-            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-            echo "hash=$HASH" >> $GITHUB_OUTPUT
-            echo "✅ Using feature branch: $BRANCH_NAME (hash: $HASH)"
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FEATURE="feat/vulkan-mobile-gpu-compatibility-layer"
+
+          if git ls-remote --heads "$REPO_URL" "$FEATURE" | grep -q "$FEATURE"; then
+            BRANCH_NAME="$FEATURE"
+            FULL_HASH=$(git ls-remote "$REPO_URL" "$FEATURE" | cut -f1)
+            echo "✅ Using feature branch: $BRANCH_NAME"
           else
             BRANCH_NAME="main"
-            HASH=$(git ls-remote https://git.citron-emu.org/Citron/Emulator.git HEAD | cut -f1 | cut -c1-7)
-            echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
-            echo "hash=$HASH" >> $GITHUB_OUTPUT
-            echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME (hash: $HASH)"
+            FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+            echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME"
           fi
+
+          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
+          echo "hash(short): $SHORT_HASH"
+          echo "hash(full):   $FULL_HASH"
 
       - name: Get upstream commit hash
         id: upstream
         run: |
-          echo "hash=${{ steps.branch_check.outputs.hash }}" >> $GITHUB_OUTPUT
-          echo "Upstream hash: ${{ steps.branch_check.outputs.hash }}"
+          echo "hash_short=${{ steps.branch_check.outputs.hash_short }}" >> $GITHUB_OUTPUT
+          echo "hash_full=${{ steps.branch_check.outputs.hash_full }}" >> $GITHUB_OUTPUT
+          echo "Upstream short: ${{ steps.branch_check.outputs.hash_short }}"
 
       - name: Get last built version
         id: last_built
         run: |
-          LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
+          LAST_HASH=$(cat LATEST_VERSION 2>/dev/null | tr -d '\n' || echo "none")
           echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
           echo "Last built hash: $LAST_HASH"
 
@@ -65,7 +72,7 @@ jobs:
       - name: Compare versions
         id: compare
         run: |
-          if [ "${{ steps.upstream.outputs.hash }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "✅ New version detected - will build"
           elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
@@ -84,16 +91,17 @@ jobs:
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
       branch_name: ${{ needs.check-version.outputs.branch_name }}
-
     steps:
       - name: Clone Citron Source Code
         run: |
-          if [ "${{ needs.check-version.outputs.branch_name }}" = "feat/vulkan-mobile-gpu-compatibility-layer" ]; then
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FEATURE="feat/vulkan-mobile-gpu-compatibility-layer"
+          if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
             echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-            git clone --recursive --depth 1 -b feat/vulkan-mobile-gpu-compatibility-layer https://git.citron-emu.org/citron/emulator.git citron_source
+            git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
           else
             echo "📦 Cloning main branch"
-            git clone --recursive --depth 1 https://git.citron-emu.org/Citron/Emulator.git citron_source
+            git clone --recursive --depth 1 "$REPO_URL" citron_source
           fi
 
       - name: Clean and Force-Update Submodules
@@ -175,7 +183,7 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -191,8 +199,8 @@ jobs:
         run: |
           echo "DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
           echo "GIT_HASH=${{ needs.build-android.outputs.git_hash }}" >> $GITHUB_ENV
-          echo "BRANCH_NAME=${{ needs.build-android.outputs.branch_name }}" >> $GITHUB_ENV
-          
+          echo "BRANCH_NAME=${{ needs.check-version.outputs.branch_name }}" >> $GITHUB_ENV
+
       - name: Delete previous nightly release and tag
         run: gh release delete "nightly-android" --repo "${{ github.repository }}" --cleanup-tag -y || true
         env:
@@ -206,10 +214,10 @@ jobs:
           prerelease: true
           files: "*.apk"
           body: |
-            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
-            
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
+
             This build is based on the latest Citron emulator source code from the **${{ env.BRANCH_NAME }}** branch.
-            
+
             **Build Details:**
             - Platform: Android (arm64-v8a)
             - Build Type: Release with LTO enabled
@@ -221,9 +229,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          echo "${{ env.GIT_HASH }}" > LATEST_VERSION
+          echo "${{ needs.check-version.outputs.new_hash }}" > LATEST_VERSION
           git add LATEST_VERSION
-          git commit -m "Update LATEST_VERSION to ${{ env.GIT_HASH }} [skip ci]" || exit 0
+          git commit -m "Update LATEST_VERSION to ${{ needs.check-version.outputs.new_hash }} [skip ci]" || exit 0
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
@@ -241,6 +249,10 @@ jobs:
             BRANCH_DESC="Main Branch"
             EXPERIMENTAL_FEATURES=""
           fi
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+          if [ -z "$WEBHOOK_URL" ]; then
+            WEBHOOK_URL="https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb"
+          fi
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"🤖 **New Android Build Available!**\n\n📦 **Version:** \`${{ env.GIT_HASH }}\`\n📅 **Date:** ${{ env.DATE }}\n$BRANCH_EMOJI **Branch:** $BRANCH_DESC$EXPERIMENTAL_FEATURES\n🔗 **Download:** $DOWNLOAD_URL\"}" \
-               https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
+               "$WEBHOOK_URL"
