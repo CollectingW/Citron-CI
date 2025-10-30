@@ -1,4 +1,5 @@
 name: Build Citron (Windows)
+
 concurrency:
   group: build-windows-nightly-${{ github.ref }}
   cancel-in-progress: true
@@ -14,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.compare.outputs.should_build }}
-      new_hash: ${{ steps.upstream.outputs.hash }}
+      new_hash: ${{ steps.upstream.outputs.hash_short }}
+      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
@@ -22,9 +24,13 @@ jobs:
       - name: Get upstream commit hash
         id: upstream
         run: |
-          HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git HEAD | cut -f1 | cut -c1-7)
-          echo "hash=$HASH" >> $GITHUB_OUTPUT
-          echo "Upstream hash: $HASH"
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
+          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
+          echo "Upstream hash short: $SHORT_HASH"
+          echo "Upstream hash full:  $FULL_HASH"
 
       - name: Get last built version
         id: last_built
@@ -50,7 +56,7 @@ jobs:
       - name: Compare versions
         id: compare
         run: |
-          if [ "${{ steps.upstream.outputs.hash }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "✅ New version detected - will build"
           elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
@@ -83,7 +89,7 @@ jobs:
 
       - name: Clone Citron Source
         shell: bash
-        run: git clone --recursive "https://git.citron-emu.org/citron/emulator.git" citron
+        run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
 
       - name: Get Nightly Version
         id: version
@@ -119,7 +125,6 @@ jobs:
         run: |
           mkdir dist
           echo "Creating final zip archive (excluding .pdb files)..."
-          # Create a temporary directory with only the files we want
           mkdir temp_package
           Get-ChildItem ".\citron\build\bin\Release\" -Recurse | Where-Object { $_.Extension -ne ".pdb" } | ForEach-Object {
             $relativePath = $_.FullName.Replace((Resolve-Path ".\citron\build\bin\Release\").Path, "").TrimStart('\')
@@ -144,6 +149,7 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -152,6 +158,7 @@ jobs:
         with:
           name: Citron-Windows-Nightly
           path: .
+
       - name: Get Version from Filename
         shell: bash
         run: |
@@ -159,10 +166,12 @@ jobs:
           VERSION=${FILENAME#Citron-windows-nightly-}
           VERSION=${VERSION%.zip}
           echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+
       - name: Delete Previous Release
         run: gh release delete "nightly-windows" --repo "${{ github.repository }}" --cleanup-tag -y || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -171,10 +180,10 @@ jobs:
           prerelease: true
           files: "*.zip"
           body: |
-            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/citron/emulator/-/commit/${{ needs.check-version.outputs.new_hash }})
-            
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
+
             This build is based on the latest Citron emulator source code from the upstream repository.
-            
+
             **Build Details:**
             - Platform: Windows (x64)
             - Build Type: Release with Qt6 and LTO
@@ -188,7 +197,6 @@ jobs:
           echo "${{ env.APP_VERSION }}" > LATEST_VERSION
           git add LATEST_VERSION
           git commit -m "Update LATEST_VERSION to ${{ env.APP_VERSION }} [skip ci]" || exit 0
-          # Pull with rebase and retry push to handle concurrent updates
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
@@ -198,6 +206,10 @@ jobs:
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-windows"
           DATE=$(date +'%Y-%m-%d')
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+          if [ -z "$WEBHOOK_URL" ]; then
+            WEBHOOK_URL="https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb"
+          fi
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"🪟 **New Windows Build Available!**\n\n📦 **Version:** \`${{ env.APP_VERSION }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\"}" \
-               https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb
+               "$WEBHOOK_URL"
