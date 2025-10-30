@@ -182,9 +182,9 @@ jobs:
             -DENABLE_SDL2=OFF \
             -DENABLE_WEB_SERVICE=OFF \
             -DENABLE_OPENSSL=OFF \
-            -DCITRON_USE_BUNDLED_VCPKG=OFF \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
             -DCITRON_USE_BUNDLED_FFMPEG=ON \
-            -DCITRON_ENABLE_LTO=OFF
+            -DCITRON_ENABLE_LTO=ON
 
       - name: Build with CMake
         run: |
