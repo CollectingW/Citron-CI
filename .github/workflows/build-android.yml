@@ -22,7 +22,7 @@ jobs:
         id: branch_check
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          FEATURE="feat/vulkan-mobile-gpu-compatibility-layer"
+          FEATURE=""
 
           if git ls-remote --heads "$REPO_URL" "$FEATURE" | grep -q "$FEATURE"; then
             BRANCH_NAME="$FEATURE"
