@@ -7,7 +7,7 @@
 
 This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** on Linux, and also Windows & Android builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
 
-* [Latest Commits Can Be Found Here](https://git.citron-emu.org/citron/emulator/-/commits/f3374ea7e61cb0bba79d17272964717e37935575)
+* [Latest Commits Can Be Found Here](https://git.citron-emu.org/Citron/Emulator/commits/branch/main)
 
 * [Latest Android Nightly Release](https://github.com/Zephyron-Dev/Citron-CI/releases/tag/nightly-android)
 
