@@ -87,7 +87,7 @@ jobs:
     name: Build Android APK
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
       branch_name: ${{ needs.check-version.outputs.branch_name }}
