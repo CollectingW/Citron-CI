@@ -21,15 +21,15 @@ jobs:
         id: branch_check
         run: |
           # Check if the feature branch exists
-          if git ls-remote --heads https://git.citron-emu.org/citron/emulator.git feat/vulkan-mobile-gpu-compatibility-layer | grep -q feat/vulkan-mobile-gpu-compatibility-layer; then
+          if git ls-remote --heads https://git.citron-emu.org/Citron/Emulator.git feat/vulkan-mobile-gpu-compatibility-layer | grep -q feat/vulkan-mobile-gpu-compatibility-layer; then
             BRANCH_NAME="feat/vulkan-mobile-gpu-compatibility-layer"
-            HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git feat/vulkan-mobile-gpu-compatibility-layer | cut -f1 | cut -c1-7)
+            HASH=$(git ls-remote https://git.citron-emu.org/Citron/Emulator.git feat/vulkan-mobile-gpu-compatibility-layer | cut -f1 | cut -c1-7)
             echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
             echo "hash=$HASH" >> $GITHUB_OUTPUT
             echo "✅ Using feature branch: $BRANCH_NAME (hash: $HASH)"
           else
             BRANCH_NAME="main"
-            HASH=$(git ls-remote https://git.citron-emu.org/citron/emulator.git HEAD | cut -f1 | cut -c1-7)
+            HASH=$(git ls-remote https://git.citron-emu.org/Citron/Emulator.git HEAD | cut -f1 | cut -c1-7)
             echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
             echo "hash=$HASH" >> $GITHUB_OUTPUT
             echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME (hash: $HASH)"
@@ -93,7 +93,7 @@ jobs:
             git clone --recursive --depth 1 -b feat/vulkan-mobile-gpu-compatibility-layer https://git.citron-emu.org/citron/emulator.git citron_source
           else
             echo "📦 Cloning main branch"
-            git clone --recursive --depth 1 https://git.citron-emu.org/citron/emulator.git citron_source
+            git clone --recursive --depth 1 https://git.citron-emu.org/Citron/Emulator.git citron_source
           fi
 
       - name: Clean and Force-Update Submodules
