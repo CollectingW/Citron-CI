@@ -113,7 +113,8 @@ jobs:
             -DUSE_DISCORD_PRESENCE=ON ^
             -DENABLE_WEB_SERVICE=ON ^
             -DENABLE_OPENSSL=ON ^
-            -DCITRON_USE_AUTO_UPDATER=ON
+            -DCITRON_USE_AUTO_UPDATER=ON ^
+            -DCITRON_ENABLE_LIBARCHIVE=ON
 
       - name: Build Citron
         working-directory: ./citron
