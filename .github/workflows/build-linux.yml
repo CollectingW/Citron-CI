@@ -77,15 +77,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # --- x86_64 Builds ---
           - name: "Citron Build (Normal x86_64)"
             os: ubuntu-latest
-            arch_suffix: ""
+            artifact_suffix: "_x86_64"
+            script_suffix: ""
             build_arg: ""
           - name: "Citron Build (Optimized x86_64)"
             os: ubuntu-latest
-            arch_suffix: "_v3"
+            artifact_suffix: "_v3"
+            script_suffix: "_v3"
             build_arg: "v3"
+          - name: "Citron Build (aarch64)"
+            os: ubuntu-24.04-arm
+            artifact_suffix: "_aarch64"
+            script_suffix: ""
+            build_arg: ""
 
     container: ghcr.io/pkgforge-dev/archlinux:latest
 
@@ -134,7 +140,7 @@ jobs:
           GIT_SHA=$(git rev-parse --short HEAD)
           export APP_VERSION="${GIT_SHA}"
           export VERSION="${GIT_SHA}"
-          export ARCH_SUFFIX="${{ matrix.arch_suffix }}"
+          export ARCH_SUFFIX="${{ matrix.script_suffix }}"
           export DEVEL="true"
           chmod +x ./package-citron.sh
           ./package-citron.sh
@@ -142,7 +148,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Artifacts${{ matrix.arch_suffix }}
+          name: Artifacts${{ matrix.artifact_suffix }}
           path: emulator/dist/
 
   release:
@@ -180,6 +186,9 @@ jobs:
           GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
         continue-on-error: true
 
+      - name: Set Build Date
+        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
       - uses: softprops/action-gh-release@v2
         with:
           name: "Continuous Build (Linux Nightly: ${{ steps.version.outputs.sha }})"
@@ -199,11 +208,11 @@ jobs:
             This build is based on the latest Citron emulator source code from the upstream repository.
 
             **Build Details:**
-            - Platform: Linux (x86_64, x86_64_v3)
+            - Platform: Linux (x86_64, x86_64_v3, aarch64)
             - Format: AppImage + tar.zst packages
             - **NEW:** Includes `citron-room` dedicated server binaries!
             - Build Type: Release with optimizations
-            - Date: $(date +'%Y-%m-%d')
+            - Date: ${{ env.BUILD_DATE }}
             
             **Dedicated Server Usage:**
             Extract the `citron-room-server*.tar.gz` and run:
