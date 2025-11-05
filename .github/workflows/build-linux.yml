@@ -104,6 +104,7 @@ jobs:
           mv get-dependencies.sh emulator/
           mv build-citron.sh emulator/
           mv package-citron.sh emulator/
+          mv build-citron-room.sh emulator/
 
       - name: Add Git Safe Directory
         working-directory: ./emulator
@@ -121,39 +122,11 @@ jobs:
           chmod +x ./build-citron.sh
           JOBS=${JOBS_VAL} DEVEL=true ./build-citron.sh ${{ matrix.build_arg }}
 
-      - name: Build citron-room dedicated server
+      - name: Build and Package citron-room Server
         working-directory: ./emulator
         run: |
-          # Build the citron-room binary
-          cmake --build build --target citron-room -j$(nproc)
-          
-          # Create dedicated server package directory
-          mkdir -p dist/citron-room-server
-          
-          # Copy binary
-          cp build/bin/citron-room dist/citron-room-server/
-          
-          # Copy any needed libraries
-          ldd build/bin/citron-room | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' dist/citron-room-server/ || true
-          
-          # Create startup script
-          cat > dist/citron-room-server/start-server.sh << 'EOF'
-          #!/bin/bash
-          export LD_LIBRARY_PATH="$(dirname "$0"):$LD_LIBRARY_PATH"
-          ./citron-room \
-            --room-name "My Citron Room" \
-            --room-description "Dedicated server" \
-            --port 24872 \
-            --max_members 16 \
-            --web-api-url "https://api.citron-emu.org" \
-            "$@"
-          EOF
-          chmod +x dist/citron-room-server/start-server.sh
-          
-          # Package it
-          cd dist
-          tar -czf citron-room-server${{ matrix.arch_suffix }}.tar.gz citron-room-server/
-          zip -r citron-room-server${{ matrix.arch_suffix }}.zip citron-room-server/
+          chmod +x ./build-citron-room.sh
+          ./build-citron-room.sh "${{ matrix.arch_suffix }}"
 
       - name: Package AppImage with Correct Name
         working-directory: ./emulator
@@ -170,11 +143,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Artifacts${{ matrix.arch_suffix }}
-          path: |
-            emulator/dist/*.AppImage*
-            emulator/dist/*.tar.zst
-            emulator/dist/citron-room-server*.tar.gz
-            emulator/dist/citron-room-server*.zip
+          path: emulator/dist/
 
   release:
     if: ${{ github.ref_name == 'main' }}
@@ -239,7 +208,7 @@ jobs:
             **Dedicated Server Usage:**
             Extract the `citron-room-server*.tar.gz` and run:
             ```bash
-            ./start-server.sh --room-name "Your Room Name"
+            ./start-server.sh --room-name "Your Room Name" --preferred-game "Mario Kart 8"
             ```
 
       - name: Update LATEST_VERSION
