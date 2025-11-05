@@ -110,7 +110,6 @@ jobs:
           mv get-dependencies.sh emulator/
           mv build-citron.sh emulator/
           mv package-citron.sh emulator/
-          mv build-citron-room.sh emulator/
 
       - name: Add Git Safe Directory
         working-directory: ./emulator
@@ -127,12 +126,6 @@ jobs:
           JOBS_VAL=$((NPROC_VAL > 4 ? 4 : NPROC_VAL))
           chmod +x ./build-citron.sh
           JOBS=${JOBS_VAL} DEVEL=true ./build-citron.sh ${{ matrix.build_arg }}
-
-      - name: Build and Package citron-room Server
-        working-directory: ./emulator
-        run: |
-          chmod +x ./build-citron-room.sh
-          ./build-citron-room.sh "${{ matrix.arch_suffix }}"
 
       - name: Package AppImage with Correct Name
         working-directory: ./emulator
@@ -200,8 +193,6 @@ jobs:
           files: |
             *.AppImage*
             *.tar.zst
-            citron-room-server*.tar.gz
-            citron-room-server*.zip
           body: |
             **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
 
@@ -210,15 +201,8 @@ jobs:
             **Build Details:**
             - Platform: Linux (x86_64, x86_64_v3, aarch64)
             - Format: AppImage + tar.zst packages
-            - **NEW:** Includes `citron-room` dedicated server binaries!
             - Build Type: Release with optimizations
             - Date: ${{ env.BUILD_DATE }}
-            
-            **Dedicated Server Usage:**
-            Extract the `citron-room-server*.tar.gz` and run:
-            ```bash
-            ./start-server.sh --room-name "Your Room Name" --preferred-game "Mario Kart 8"
-            ```
 
       - name: Update LATEST_VERSION
         if: success()
@@ -242,6 +226,5 @@ jobs:
             WEBHOOK_URL="https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb"
           fi
           curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3 builds + **citron-room dedicated server**!\"}" \
+               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3 & aarch64 builds!\"}" \
                "$WEBHOOK_URL"
-
