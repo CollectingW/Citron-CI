@@ -1,0 +1,278 @@
+name: Build Citron (macOS)
+
+concurrency:
+  group: build-macos-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-version:
+    name: Check if new version available
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      new_hash: ${{ steps.upstream.outputs.hash_short }}
+      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+      - name: Get upstream commit hash
+        id: upstream
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
+          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
+      - name: Get last built version
+        id: last_built
+        run: |
+          LAST_HASH=$(cat LATEST_VERSION_MACOS 2>/dev/null | tr -d '\n' || echo "none")
+          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
+      - name: Check if release exists
+        id: release_check
+        run: |
+          if gh release view nightly-macos --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    name: "Citron Build (macOS)"
+    needs: [check-version]
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies via Homebrew
+        run: |
+          brew install ninja boost catch2 cmake enet fmt ffmpeg glslang hidapi libvpx lld llvm mbedtls nasm nlohmann-json openal-soft sdl2 molten-vk vulkan-headers vulkan-loader webp
+
+      - name: Clone Citron Source
+        run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
+
+      - name: Patch CMakeLists for macOS Compatibility
+        working-directory: ./citron
+        run: |
+          sed -i.bak 's/if (NOT MSVC)/if (NOT MSVC AND NOT APPLE)/g' src/dedicated_room/CMakeLists.txt
+          sed -i.bak 's/if (NOT MSVC)/if (NOT MSVC AND NOT APPLE)/g' src/citron/CMakeLists.txt
+          sed -i.bak 's/if (NOT MSVC)/if (NOT MSVC AND NOT APPLE)/g' src/citron_cmd/CMakeLists.txt
+
+      - name: Get Nightly Version
+        id: version
+        working-directory: ./citron
+        run: |
+          git fetch --tags
+          VERSION=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Configure CMake
+        working-directory: ./citron
+        run: |
+          OPENAL_DIR="$(brew --prefix openal-soft)"
+          BREW_PREFIX="$(brew --prefix)"
+          
+          cmake -B build -S . -G "Ninja" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCITRON_USE_FASTER_LD=OFF \
+            -DCMAKE_PREFIX_PATH="$OPENAL_DIR;$BREW_PREFIX" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCITRON_USE_BUNDLED_VCPKG=OFF \
+            -DBoost_USE_STATIC_LIBS=ON \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+            -DENABLE_QT6=ON \
+            -DCITRON_ENABLE_LTO=ON \
+            -DCITRON_TESTS=OFF \
+            -DUSE_DISCORD_PRESENCE=ON \
+            -DENABLE_WEB_SERVICE=ON \
+            -DENABLE_OPENSSL=ON \
+            -DCITRON_USE_AUTO_UPDATER=OFF
+
+      - name: Build Citron
+        working-directory: ./citron
+        run: cmake --build build --config Release
+
+      - name: Package macOS Build
+        run: |
+          set -e
+          mkdir -p dist
+          APP_BUNDLE_PATH=$(find citron/build -name "citron.app" | head -n 1)
+          if [ -z "$APP_BUNDLE_PATH" ]; then
+            echo "::error::Could not find citron.app bundle after build!"
+            exit 1
+          fi
+          echo "Found .app bundle at: $APP_BUNDLE_PATH"
+          
+          MACDEPLOYQT_PATH=$(find "$PWD/citron" -name "macdeployqt" -type f | head -n 1)
+          if [ -z "$MACDEPLOYQT_PATH" ]; then
+            echo "::error::Could not find macdeployqt in the build directory!"
+            exit 1
+          fi
+          echo "Found macdeployqt at: $MACDEPLOYQT_PATH"
+
+          # Step 1: Run macdeployqt to bundle Qt frameworks.
+          "$MACDEPLOYQT_PATH" "$APP_BUNDLE_PATH" -verbose=1
+
+          # --- DEPENDENCY BUNDLING SCRIPT ---
+          FRAMEWORKS_PATH="$APP_BUNDLE_PATH/Contents/Frameworks"
+          EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/citron"
+          
+          # Create a list of all binaries to process. Start with the main executable and existing frameworks.
+          files_to_process=()
+          files_to_process+=("$EXECUTABLE_PATH")
+          
+          # Use find to handle both .dylib files and frameworks correctly
+          while IFS= read -r -d $'\0' file; do
+              files_to_process+=("$file")
+          done < <(find "$FRAMEWORKS_PATH" \( -name "*.dylib" -o -type f -and -not -name ".*" \) -print0)
+
+          processed_files=()
+
+          while [ ${#files_to_process[@]} -gt 0 ]; do
+            file_to_process="${files_to_process[0]}"
+            files_to_process=("${files_to_process[@]:1}") # Dequeue
+
+            # Avoid processing the same file twice
+            if [[ " ${processed_files[*]} " =~ " ${file_to_process} " ]]; then
+              continue
+            fi
+            processed_files+=("$file_to_process")
+            
+            echo "--- Processing: $(basename "$file_to_process")"
+
+            # 1. Change the library's own ID if it's a dylib or framework executable
+            if [[ "$(file -b "$file_to_process")" == *"Mach-O"* && "$file_to_process" != "$EXECUTABLE_PATH" ]]; then
+              new_id="@rpath/$(basename "$file_to_process")"
+              echo "Setting ID of $(basename "$file_to_process") to $new_id"
+              install_name_tool -id "$new_id" "$file_to_process"
+            fi
+            
+            # 2. Find, copy, and update its dependencies
+            otool -L "$file_to_process" | grep '/opt/homebrew' | awk '{print $1}' | while read -r dylib_path; do
+              dylib_name=$(basename "$dylib_path")
+              
+              # Copy the dependency if it's not already in the bundle
+              if [ ! -f "$FRAMEWORKS_PATH/$dylib_name" ]; then
+                echo "Copying dependency '$dylib_name' to Frameworks"
+                cp -L "$dylib_path" "$FRAMEWORKS_PATH/"
+                chmod 755 "$FRAMEWORKS_PATH/$dylib_name"
+                # Add the new library to the queue to be processed
+                files_to_process+=("$FRAMEWORKS_PATH/$dylib_name")
+              fi
+              
+              # Update the reference in the file we are processing
+              new_ref="@rpath/$dylib_name"
+              echo "Changing reference in $(basename "$file_to_process") from $dylib_path to $new_ref"
+              install_name_tool -change "$dylib_path" "$new_ref" "$file_to_process"
+            done
+          done
+          echo "--- Finished Dependency Bundling ---"
+          
+          # Step 3: Verify all dependencies are now relative
+          echo "--- Verifying Final Library Paths ---"
+          ALL_FILES_TO_VERIFY=()
+          ALL_FILES_TO_VERIFY+=("$EXECUTABLE_PATH")
+          while IFS= read -r -d $'\0' file; do
+              ALL_FILES_TO_VERIFY+=("$file")
+          done < <(find "$FRAMEWORKS_PATH" \( -name "*.dylib" -o -type f -and -not -name ".*" \) -print0)
+
+          for file in "${ALL_FILES_TO_VERIFY[@]}"; do
+              if [ -f "$file" ]; then
+                  echo "--- $(basename "$file") ---"
+                  otool -L "$file"
+              fi
+          done
+
+          # Step 4: Correct permissions and sign
+          echo "Correcting permissions on the application bundle..."
+          chmod -R u+w "$APP_BUNDLE_PATH"
+          echo "Applying ad-hoc signature to the application bundle..."
+          codesign --force --deep -s - "$APP_BUNDLE_PATH"
+
+          # Step 5: Create the final DMG
+          echo "Creating final DMG..."
+          DMG_FILENAME="Citron-macOS-nightly-${{ steps.version.outputs.VERSION }}.dmg"
+          hdiutil create -fs HFS+ -srcfolder "$APP_BUNDLE_PATH" -volname "Citron Nightly" "./$DMG_FILENAME"
+          mv "$DMG_FILENAME" ./dist/
+
+      - name: Upload macOS Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Citron-macOS-Nightly
+          path: "dist/*.dmg"
+
+  release:
+    if: ${{ github.ref_name == 'main' }}
+    name: "Release (macOS)"
+    needs: [check-version, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Citron-macOS-Nightly
+          path: .
+      - name: Get Version from Filename
+        run: |
+          FILENAME=$(ls *.dmg)
+          VERSION=${FILENAME#Citron-macOS-nightly-}
+          VERSION=${VERSION%.dmg}
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+      - name: Delete Previous Release
+        run: gh release delete "nightly-macos" --repo "${{ github.repository }}" --cleanup-tag -y || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set Build Date
+        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Continuous Build (macOS Nightly: ${{ env.APP_VERSION }})"
+          tag_name: "nightly-macos"
+          prerelease: true
+          files: "*.dmg"
+          body: |
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
+            This build is based on the latest Citron emulator source code from the upstream repository.
+            **Build Details:**
+            - Platform: macOS (Universal)
+            - Build Type: Release with Qt6 and LTO
+            - Date: ${{ env.BUILD_DATE }}
+      - name: Update LATEST_VERSION_MACOS
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "${{ env.APP_VERSION }}" > LATEST_VERSION_MACOS
+          git add LATEST_VERSION_MACOS
+          git commit -m "Update LATEST_VERSION_MACOS to ${{ env.APP_VERSION }} [skip ci]" || exit 0
+          for i in {1..5}; do
+            git pull --rebase origin main && git push && break || sleep 2
+          done
