@@ -20,7 +20,6 @@ jobs:
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
-
       - name: Get upstream commit hash
         id: upstream
         run: |
@@ -29,56 +28,51 @@ jobs:
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
           echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
-          echo "Upstream hash short: $SHORT_HASH"
-          echo "Upstream hash full:  $FULL_HASH"
-
       - name: Get last built version
         id: last_built
         run: |
           LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
           echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
-          echo "Last built hash: $LAST_HASH"
-
       - name: Check if release exists
         id: release_check
         run: |
           if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Release exists"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Release does not exist"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
-
       - name: Compare versions
         id: compare
         run: |
           if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "✅ New version detected - will build"
           elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "✅ No release exists - will build"
           else
             echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "⏭️ No changes - skipping build"
           fi
 
   build:
-    name: "Citron Build (Windows)"
+    name: "Citron Build (Windows - ${{ matrix.arch }})"
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+          # - os: windows-11-arm
+          #   arch: ARM64
     timeout-minutes: 120
 
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - name: Install Vulkan SDK
         shell: pwsh
         run: |
@@ -86,11 +80,9 @@ jobs:
           Invoke-WebRequest -Uri $vulkan_sdk_url -OutFile VulkanSDK-Installer.exe
           Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
           echo "C:\VulkanSDK\1.3.283.0\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-
       - name: Clone Citron Source
         shell: bash
         run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
-
       - name: Get Nightly Version
         id: version
         working-directory: ./citron
@@ -100,11 +92,34 @@ jobs:
           VERSION=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
+      # - name: Patch Incompatible Dynarmic Source for MSVC
+      #   if: matrix.arch == 'ARM64'
+      #   working-directory: ./citron/src/core/arm/dynarmic
+      #   shell: bash
+      #   run: |
+      #     # The code in dynarmic_cp15.cpp uses GCC/Clang inline assembly which MSVC cannot compile.
+      #     # Wrap the entire file in a check that excludes it when compiling with MSVC.
+      #     # This will allow the project to link but the JIT for this specific part will not be functional.
+      #     # This is a necessary step to get a successful build on Windows ARM64.
+      #     
+      #     # Read the original file content
+      #     ORIGINAL_CONTENT=$(cat dynarmic_cp15.cpp)
+      #     
+      #     # Overwrite the file with the wrapped content
+      #     echo "#if !defined(_MSC_VER)" > dynarmic_cp15.cpp
+      #     echo "$ORIGINAL_CONTENT" >> dynarmic_cp15.cpp
+      #     echo "#endif // !defined(_MSC_VER)" >> dynarmic_cp15.cpp
+
+      - name: Force Clean Build by Removing Old Cache
+        working-directory: ./citron
+        shell: bash
+        run: rm -rf build
+
       - name: Configure CMake
         working-directory: ./citron
         shell: cmd
         run: |
-          cmake -B build -S . -G "Visual Studio 17 2022" -A x64 ^
+          cmake -B build -S . -G "Visual Studio 17 2022" -A ${{ matrix.arch }} ^
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_ENABLE_LTO=ON ^
             -DCITRON_USE_BUNDLED_QT=ON ^
@@ -115,17 +130,14 @@ jobs:
             -DENABLE_OPENSSL=ON ^
             -DCITRON_USE_AUTO_UPDATER=ON ^
             -DCITRON_ENABLE_LIBARCHIVE=ON
-
       - name: Build Citron
         working-directory: ./citron
         shell: cmd
         run: cmake --build build --config Release --parallel
-
       - name: Package Windows Build
         shell: pwsh
         run: |
           mkdir dist
-          echo "Creating final zip archive (excluding .pdb files)..."
           mkdir temp_package
           Get-ChildItem ".\citron\build\bin\Release\" -Recurse | Where-Object { $_.Extension -ne ".pdb" } | ForEach-Object {
             $relativePath = $_.FullName.Replace((Resolve-Path ".\citron\build\bin\Release\").Path, "").TrimStart('\')
@@ -134,13 +146,12 @@ jobs:
             if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
             Copy-Item $_.FullName $destPath -Force
           }
-          Compress-Archive -Path ".\temp_package\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}.zip"
+          Compress-Archive -Path ".\temp_package\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
           Remove-Item ".\temp_package" -Recurse -Force
-
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
         with:
-          name: Citron-Windows-Nightly
+          name: Citron-Windows-Nightly-${{ matrix.arch }}
           path: "dist/*.zip"
 
   release:
@@ -150,29 +161,30 @@ jobs:
     permissions:
       contents: write
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
-          name: Citron-Windows-Nightly
+          name: Citron-Windows-Nightly-x64
           path: .
-
+      # - uses: actions/download-artifact@v4
+      #   with:
+      #     name: Citron-Windows-Nightly-ARM64
+      #     path: .
       - name: Get Version from Filename
         shell: bash
         run: |
-          FILENAME=$(ls *.zip)
+          FILENAME=$(ls Citron-windows-nightly-*-x64.zip)
           VERSION=${FILENAME#Citron-windows-nightly-}
-          VERSION=${VERSION%.zip}
+          VERSION=${VERSION%-x64.zip}
           echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
-
       - name: Delete Previous Release
         run: gh release delete "nightly-windows" --repo "${{ github.repository }}" --cleanup-tag -y || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      - name: Set Build Date
+        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
       - name: Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
@@ -188,8 +200,7 @@ jobs:
             **Build Details:**
             - Platform: Windows (x64)
             - Build Type: Release with Qt6 and LTO
-            - Date: $(date +'%Y-%m-%d')
-
+            - Date: ${{ env.BUILD_DATE }}
       - name: Update LATEST_VERSION
         if: success()
         run: |
