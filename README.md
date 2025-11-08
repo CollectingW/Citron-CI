@@ -5,6 +5,10 @@
 [![Build Citron (Windows)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-windows.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-windows.yml)
 [![Build Citron (Linux)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-linux.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-linux.yml)
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Zephyron-Dev/Citron-CI&type=date&legend=top-left)](https://www.star-history.com/#Zephyron-Dev/Citron-CI&type=date&legend=top-left)
+
 This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** on Linux, and also Windows & Android builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
 
 * [Latest Commits Can Be Found Here](https://git.citron-emu.org/Citron/Emulator/commits/branch/main)
