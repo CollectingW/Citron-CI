@@ -128,26 +128,89 @@ jobs:
           
           MACDEPLOYQT_PATH=$(find "$PWD/citron" -name "macdeployqt" -type f | head -n 1)
           if [ -z "$MACDEPLOYQT_PATH" ]; then
-            echo "::error::Could not find macdeployqt in the build directory!"
+            # Try to find macdeployqt in Homebrew's Qt installation
+            MACDEPLOYQT_PATH=$(find "$(brew --prefix qt@6 2>/dev/null || brew --prefix qt6 2>/dev/null || echo /opt/homebrew/opt/qt@6)" -name "macdeployqt" -type f 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$MACDEPLOYQT_PATH" ]; then
+            echo "::error::Could not find macdeployqt!"
             exit 1
           fi
           echo "Found macdeployqt at: $MACDEPLOYQT_PATH"
 
           # Step 1: Run macdeployqt to bundle Qt frameworks.
-          "$MACDEPLOYQT_PATH" "$APP_BUNDLE_PATH" -verbose=1
+          "$MACDEPLOYQT_PATH" "$APP_BUNDLE_PATH" -verbose=1 -always-overwrite
 
           # --- DEPENDENCY BUNDLING SCRIPT ---
           FRAMEWORKS_PATH="$APP_BUNDLE_PATH/Contents/Frameworks"
           EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/citron"
+          BREW_PREFIX="$(brew --prefix)"
+          
+          # Set rpath on the main executable to find frameworks in the bundle
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXECUTABLE_PATH" 2>/dev/null || true
+          
+          # Ensure Frameworks directory exists
+          mkdir -p "$FRAMEWORKS_PATH"
+          
+          # Function to get the actual binary from a framework path
+          get_framework_binary() {
+            local framework_path="$1"
+            if [[ "$framework_path" == *.framework/* ]]; then
+              # Extract framework name and find the binary
+              local framework_name=$(echo "$framework_path" | sed -E 's|.*/([^/]+)\.framework/.*|\1|')
+              local framework_dir=$(echo "$framework_path" | sed -E 's|(.*/[^/]+\.framework)/.*|\1|')
+              if [ -f "$framework_dir/$framework_name" ]; then
+                echo "$framework_dir/$framework_name"
+              elif [ -f "$framework_dir/Versions/Current/$framework_name" ]; then
+                echo "$framework_dir/Versions/Current/$framework_name"
+              fi
+            else
+              echo "$framework_path"
+            fi
+          }
+          
+          # Function to copy Qt framework to app bundle
+          copy_qt_framework() {
+            local framework_path="$1"
+            local framework_name=$(basename "$framework_path" .framework)
+            local dest_framework="$FRAMEWORKS_PATH/$framework_name.framework"
+            
+            if [ -d "$dest_framework" ]; then
+              echo "Framework $framework_name already exists in bundle"
+              return
+            fi
+            
+            echo "Copying Qt framework: $framework_name"
+            cp -R "$framework_path" "$FRAMEWORKS_PATH/"
+            
+            # Update framework's install name
+            local framework_binary=$(get_framework_binary "$dest_framework/$framework_name")
+            if [ -f "$framework_binary" ]; then
+              install_name_tool -id "@rpath/$framework_name.framework/Versions/A/$framework_name" "$framework_binary"
+            fi
+          }
           
           # Create a list of all binaries to process. Start with the main executable and existing frameworks.
           files_to_process=()
           files_to_process+=("$EXECUTABLE_PATH")
           
-          # Use find to handle both .dylib files and frameworks correctly
+          # Add all existing binaries in Frameworks
           while IFS= read -r -d $'\0' file; do
               files_to_process+=("$file")
-          done < <(find "$FRAMEWORKS_PATH" \( -name "*.dylib" -o -type f -and -not -name ".*" \) -print0)
+          done < <(find "$FRAMEWORKS_PATH" -type f -perm +111 -print0 2>/dev/null || true)
+          
+          # Also find framework binaries
+          while IFS= read -r -d $'\0' framework; do
+              if [ -d "$framework" ]; then
+                  framework_name=$(basename "$framework" .framework)
+                  framework_binary="$framework/$framework_name"
+                  if [ ! -f "$framework_binary" ]; then
+                      framework_binary="$framework/Versions/Current/$framework_name"
+                  fi
+                  if [ -f "$framework_binary" ]; then
+                      files_to_process+=("$framework_binary")
+                  fi
+              fi
+          done < <(find "$FRAMEWORKS_PATH" -name "*.framework" -print0 2>/dev/null || true)
 
           processed_files=()
 
@@ -161,58 +224,126 @@ jobs:
             fi
             processed_files+=("$file_to_process")
             
+            if [ ! -f "$file_to_process" ]; then
+              continue
+            fi
+            
             echo "--- Processing: $(basename "$file_to_process")"
 
             # 1. Change the library's own ID if it's a dylib or framework executable
-            if [[ "$(file -b "$file_to_process")" == *"Mach-O"* && "$file_to_process" != "$EXECUTABLE_PATH" ]]; then
-              new_id="@rpath/$(basename "$file_to_process")"
+            if [[ "$(file -b "$file_to_process" 2>/dev/null)" == *"Mach-O"* && "$file_to_process" != "$EXECUTABLE_PATH" ]]; then
+              # Determine the new ID based on whether it's in a framework or standalone
+              if [[ "$file_to_process" == *".framework/"* ]]; then
+                framework_name=$(echo "$file_to_process" | sed -E 's|.*/([^/]+)\.framework/.*|\1|')
+                new_id="@rpath/$framework_name.framework/Versions/A/$framework_name"
+              else
+                new_id="@rpath/$(basename "$file_to_process")"
+              fi
               echo "Setting ID of $(basename "$file_to_process") to $new_id"
-              install_name_tool -id "$new_id" "$file_to_process"
+              install_name_tool -id "$new_id" "$file_to_process" 2>/dev/null || true
             fi
             
             # 2. Find, copy, and update its dependencies
-            otool -L "$file_to_process" | grep '/opt/homebrew' | awk '{print $1}' | while read -r dylib_path; do
-              dylib_name=$(basename "$dylib_path")
-              
-              # Copy the dependency if it's not already in the bundle
-              if [ ! -f "$FRAMEWORKS_PATH/$dylib_name" ]; then
-                echo "Copying dependency '$dylib_name' to Frameworks"
-                cp -L "$dylib_path" "$FRAMEWORKS_PATH/"
-                chmod 755 "$FRAMEWORKS_PATH/$dylib_name"
-                # Add the new library to the queue to be processed
-                files_to_process+=("$FRAMEWORKS_PATH/$dylib_name")
+            otool -L "$file_to_process" 2>/dev/null | grep -E "(/opt/homebrew|$BREW_PREFIX)" | awk '{print $1}' | while read -r dylib_path; do
+              # Skip system libraries and already processed frameworks
+              if [[ "$dylib_path" == /System/* ]] || [[ "$dylib_path" == /usr/lib/* ]] || [[ "$dylib_path" == @rpath/* ]] || [[ "$dylib_path" == @executable_path/* ]]; then
+                continue
               fi
               
-              # Update the reference in the file we are processing
-              new_ref="@rpath/$dylib_name"
-              echo "Changing reference in $(basename "$file_to_process") from $dylib_path to $new_ref"
-              install_name_tool -change "$dylib_path" "$new_ref" "$file_to_process"
+              # Handle Qt frameworks specially
+              if [[ "$dylib_path" == *".framework/"* ]]; then
+                framework_path=$(echo "$dylib_path" | sed -E 's|(.*/[^/]+\.framework)/.*|\1|')
+                framework_name=$(basename "$framework_path" .framework)
+                framework_binary=$(get_framework_binary "$dylib_path")
+                
+                # Copy framework if not already in bundle
+                if [ ! -d "$FRAMEWORKS_PATH/$framework_name.framework" ]; then
+                  if [ -d "$framework_path" ]; then
+                    copy_qt_framework "$framework_path"
+                    # Add framework binary to processing queue
+                    new_framework_binary="$FRAMEWORKS_PATH/$framework_name.framework/$framework_name"
+                    if [ ! -f "$new_framework_binary" ]; then
+                      new_framework_binary="$FRAMEWORKS_PATH/$framework_name.framework/Versions/Current/$framework_name"
+                    fi
+                    if [ -f "$new_framework_binary" ]; then
+                      files_to_process+=("$new_framework_binary")
+                    fi
+                  fi
+                fi
+                
+                # Update reference to use @rpath
+                new_ref="@rpath/$framework_name.framework/Versions/A/$framework_name"
+                echo "Changing reference in $(basename "$file_to_process") from $dylib_path to $new_ref"
+                install_name_tool -change "$dylib_path" "$new_ref" "$file_to_process" 2>/dev/null || true
+              else
+                # Handle regular dylib files
+                dylib_name=$(basename "$dylib_path")
+                
+                # Copy the dependency if it's not already in the bundle
+                if [ ! -f "$FRAMEWORKS_PATH/$dylib_name" ]; then
+                  if [ -f "$dylib_path" ]; then
+                    echo "Copying dependency '$dylib_name' to Frameworks"
+                    cp -L "$dylib_path" "$FRAMEWORKS_PATH/" 2>/dev/null || cp "$dylib_path" "$FRAMEWORKS_PATH/" 2>/dev/null || true
+                    chmod 755 "$FRAMEWORKS_PATH/$dylib_name" 2>/dev/null || true
+                    # Add the new library to the queue to be processed
+                    if [ -f "$FRAMEWORKS_PATH/$dylib_name" ]; then
+                      files_to_process+=("$FRAMEWORKS_PATH/$dylib_name")
+                    fi
+                  fi
+                fi
+                
+                # Update the reference in the file we are processing
+                if [ -f "$FRAMEWORKS_PATH/$dylib_name" ]; then
+                  new_ref="@rpath/$dylib_name"
+                  echo "Changing reference in $(basename "$file_to_process") from $dylib_path to $new_ref"
+                  install_name_tool -change "$dylib_path" "$new_ref" "$file_to_process" 2>/dev/null || true
+                fi
+              fi
             done
           done
           echo "--- Finished Dependency Bundling ---"
           
-          # Step 3: Verify all dependencies are now relative
+          # Step 3: Fix any remaining absolute paths in Qt frameworks
+          echo "--- Fixing Qt Framework Paths ---"
+          find "$FRAMEWORKS_PATH" -name "*.framework" -type d | while read -r framework_dir; do
+            framework_name=$(basename "$framework_dir" .framework)
+            framework_binary="$framework_dir/$framework_name"
+            if [ ! -f "$framework_binary" ]; then
+              framework_binary="$framework_dir/Versions/Current/$framework_name"
+            fi
+            if [ -f "$framework_binary" ]; then
+              otool -L "$framework_binary" 2>/dev/null | grep -E "(/opt/homebrew|$BREW_PREFIX)" | awk '{print $1}' | while read -r dep_path; do
+                if [[ "$dep_path" == *".framework/"* ]]; then
+                  dep_framework=$(echo "$dep_path" | sed -E 's|.*/([^/]+)\.framework/.*|\1|')
+                  new_ref="@rpath/$dep_framework.framework/Versions/A/$dep_framework"
+                  install_name_tool -change "$dep_path" "$new_ref" "$framework_binary" 2>/dev/null || true
+                fi
+              done
+            fi
+          done
+          
+          # Step 4: Verify all dependencies are now relative
           echo "--- Verifying Final Library Paths ---"
           ALL_FILES_TO_VERIFY=()
           ALL_FILES_TO_VERIFY+=("$EXECUTABLE_PATH")
           while IFS= read -r -d $'\0' file; do
               ALL_FILES_TO_VERIFY+=("$file")
-          done < <(find "$FRAMEWORKS_PATH" \( -name "*.dylib" -o -type f -and -not -name ".*" \) -print0)
+          done < <(find "$FRAMEWORKS_PATH" -type f -perm +111 -print0 2>/dev/null || true)
 
           for file in "${ALL_FILES_TO_VERIFY[@]}"; do
               if [ -f "$file" ]; then
                   echo "--- $(basename "$file") ---"
-                  otool -L "$file"
+                  otool -L "$file" 2>/dev/null | head -20
               fi
           done
 
-          # Step 4: Correct permissions and sign
+          # Step 5: Correct permissions and sign
           echo "Correcting permissions on the application bundle..."
           chmod -R u+w "$APP_BUNDLE_PATH"
           echo "Applying ad-hoc signature to the application bundle..."
           codesign --force --deep -s - "$APP_BUNDLE_PATH"
 
-          # Step 5: Create the final DMG
+          # Step 6: Create the final DMG
           echo "Creating final DMG..."
           DMG_FILENAME="Citron-macOS-nightly-${{ steps.version.outputs.VERSION }}.dmg"
           hdiutil create -fs HFS+ -srcfolder "$APP_BUNDLE_PATH" -volname "Citron Nightly" "./$DMG_FILENAME"
