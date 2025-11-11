@@ -407,3 +407,16 @@ jobs:
           for i in {1..5}; do
             git pull --rebase origin main && git push && break || sleep 2
           done
+
+      - name: Post to Discord
+        if: success()
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-macos"
+          DATE=$(date +'%Y-%m-%d')
+          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
+          if [ -z "$WEBHOOK_URL" ]; then
+            WEBHOOK_URL="https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb"
+          fi
+          curl -H "Content-Type: application/json" \
+               -d "{\"content\":\"🍎 **New macOS Build Available!**\n\n📦 **Version:** \`${{ env.APP_VERSION }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\"}" \
+               "$WEBHOOK_URL"
