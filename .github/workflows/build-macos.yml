@@ -80,6 +80,17 @@ jobs:
           sed -i.bak 's/if (NOT MSVC)/if (NOT MSVC AND NOT APPLE)/g' src/citron/CMakeLists.txt
           sed -i.bak 's/if (NOT MSVC)/if (NOT MSVC AND NOT APPLE)/g' src/citron_cmd/CMakeLists.txt
 
+      - name: Patch AGL in Qt FindWrapOpenGL.cmake
+        working-directory: ./citron
+        run: |
+          QT_OPENGL_CMAKE="externals/qt/6.7.3/macos/lib/cmake/Qt6/FindWrapOpenGL.cmake"
+          if [ -f "$QT_OPENGL_CMAKE" ]; then
+            # Replace lines 40-46 with set(__opengl_agl_fw_path "")
+            awk 'NR>=40 && NR<=46 {if(NR==40) print "          set(__opengl_agl_fw_path \"\")"; next}1' "$QT_OPENGL_CMAKE" > "$QT_OPENGL_CMAKE.tmp" && mv "$QT_OPENGL_CMAKE.tmp" "$QT_OPENGL_CMAKE"
+          else
+            echo "Warning: $QT_OPENGL_CMAKE not found, skipping AGL patch"
+          fi
+
       - name: Get Nightly Version
         id: version
         working-directory: ./citron
@@ -88,28 +99,38 @@ jobs:
           VERSION=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Set up Python 3.12 venv
+        working-directory: ./citron
+        run: |
+          python3.12 -m venv venv
+          source venv/bin/activate
+          echo "VIRTUAL_ENV=$PWD/venv" >> $GITHUB_ENV
+          echo "$PWD/venv/bin" >> $GITHUB_PATH
+
       - name: Configure CMake
         working-directory: ./citron
         run: |
           OPENAL_DIR="$(brew --prefix openal-soft)"
-          BREW_PREFIX="$(brew --prefix)"
+          SDL2_DIR="$(brew --prefix sdl2)"
           
           cmake -B build -S . -G "Ninja" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DCITRON_USE_FASTER_LD=OFF \
-            -DCMAKE_PREFIX_PATH="$OPENAL_DIR;$BREW_PREFIX" \
+            -DCMAKE_PREFIX_PATH="$OPENAL_DIR;$SDL2_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCITRON_USE_BUNDLED_VCPKG=OFF \
             -DBoost_USE_STATIC_LIBS=ON \
             -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
-            -DENABLE_QT6=ON \
+            -DENABLE_QT=ON \
             -DCITRON_ENABLE_LTO=ON \
             -DCITRON_TESTS=OFF \
             -DUSE_DISCORD_PRESENCE=ON \
             -DENABLE_WEB_SERVICE=ON \
             -DENABLE_OPENSSL=ON \
-            -DCITRON_USE_AUTO_UPDATER=OFF
+            -DCITRON_USE_AUTO_UPDATER=OFF \
+            -DENABLE_SDL2=ON \
+            -DCITRON_USE_EXTERNAL_SDL2=OFF
 
       - name: Build Citron
         working-directory: ./citron
