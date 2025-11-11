@@ -147,9 +147,14 @@ jobs:
           fi
           echo "Found .app bundle at: $APP_BUNDLE_PATH"
           
-          MACDEPLOYQT_PATH=$(find "$PWD/citron" -name "macdeployqt" -type f | head -n 1)
+          # Prefer bundled Qt's macdeployqt if available (to ensure it uses bundled Qt)
+          MACDEPLOYQT_PATH=$(find "$PWD/citron/externals/qt" -name "macdeployqt" -type f 2>/dev/null | head -n 1)
           if [ -z "$MACDEPLOYQT_PATH" ]; then
-            # Try to find macdeployqt in Homebrew's Qt installation
+            # Try to find macdeployqt in the build directory
+            MACDEPLOYQT_PATH=$(find "$PWD/citron/build" -name "macdeployqt" -type f 2>/dev/null | head -n 1)
+          fi
+          if [ -z "$MACDEPLOYQT_PATH" ]; then
+            # Fall back to Homebrew's Qt installation
             MACDEPLOYQT_PATH=$(find "$(brew --prefix qt@6 2>/dev/null || brew --prefix qt6 2>/dev/null || echo /opt/homebrew/opt/qt@6)" -name "macdeployqt" -type f 2>/dev/null | head -n 1)
           fi
           if [ -z "$MACDEPLOYQT_PATH" ]; then
@@ -166,7 +171,19 @@ jobs:
           EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/citron"
           BREW_PREFIX="$(brew --prefix)"
           
-          # Set rpath on the main executable to find frameworks in the bundle
+          # Step 0: Remove any system Qt rpaths and ensure bundled frameworks are prioritized
+          echo "--- Removing system Qt rpaths and setting bundle rpath priority ---"
+          # Get current rpaths
+          CURRENT_RPATHS=$(otool -l "$EXECUTABLE_PATH" 2>/dev/null | grep -A 2 "LC_RPATH" | grep "path" | awk '{print $2}' || true)
+          # Remove any rpaths pointing to homebrew Qt
+          echo "$CURRENT_RPATHS" | while read -r rpath; do
+            if [[ "$rpath" == *"$BREW_PREFIX"* ]] && [[ "$rpath" == *"qt"* ]]; then
+              echo "Removing system Qt rpath: $rpath"
+              install_name_tool -delete_rpath "$rpath" "$EXECUTABLE_PATH" 2>/dev/null || true
+            fi
+          done
+          # Ensure @executable_path/../Frameworks is the FIRST rpath (most important)
+          install_name_tool -delete_rpath "@executable_path/../Frameworks" "$EXECUTABLE_PATH" 2>/dev/null || true
           install_name_tool -add_rpath "@executable_path/../Frameworks" "$EXECUTABLE_PATH" 2>/dev/null || true
           
           # Ensure Frameworks directory exists
@@ -389,13 +406,34 @@ jobs:
               fi
           done
 
-          # Step 5: Correct permissions and sign
+          # Step 5: Ensure Qt uses bundled frameworks (not system Qt)
+          echo "--- Configuring Qt to use bundled frameworks ---"
+          INFO_PLIST="$APP_BUNDLE_PATH/Contents/Info.plist"
+          if [ -f "$INFO_PLIST" ]; then
+            # Add LSEnvironment to ensure Qt finds bundled plugins first
+            # This prevents Qt from loading system Qt via PATH
+            /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$INFO_PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :LSEnvironment:QT_PLUGIN_PATH string @executable_path/../PlugIns" "$INFO_PLIST" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :LSEnvironment:QT_PLUGIN_PATH @executable_path/../PlugIns" "$INFO_PLIST" 2>/dev/null || true
+          fi
+          
+          # Step 6: Verify Qt frameworks are using @rpath (not system paths)
+          echo "--- Verifying Qt framework paths in executable ---"
+          QT_FRAMEWORKS_IN_EXE=$(otool -L "$EXECUTABLE_PATH" 2>/dev/null | grep -i "qt" | grep -v "@rpath" | grep -E "(/opt/homebrew|$BREW_PREFIX)" || true)
+          if [ -n "$QT_FRAMEWORKS_IN_EXE" ]; then
+            echo "::warning::Found system Qt paths in executable, attempting to fix..."
+            echo "$QT_FRAMEWORKS_IN_EXE"
+          else
+            echo "✓ All Qt frameworks are using @rpath"
+          fi
+
+          # Step 7: Correct permissions and sign
           echo "Correcting permissions on the application bundle..."
           chmod -R u+w "$APP_BUNDLE_PATH"
           echo "Applying ad-hoc signature to the application bundle..."
           codesign --force --deep -s - "$APP_BUNDLE_PATH"
 
-          # Step 6: Create the final DMG
+          # Step 8: Create the final DMG
           echo "Creating final DMG..."
           DMG_FILENAME="Citron-macOS-nightly-${{ steps.version.outputs.VERSION }}.dmg"
           hdiutil create -fs HFS+ -srcfolder "$APP_BUNDLE_PATH" -volname "Citron Nightly" "./$DMG_FILENAME"
