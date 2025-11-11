@@ -151,6 +151,37 @@ jobs:
           # Ensure Frameworks directory exists
           mkdir -p "$FRAMEWORKS_PATH"
           
+          # Step 1.5: Fix main executable's Qt framework references FIRST
+          # This is critical - the main executable must have @rpath references before processing other deps
+          echo "--- Fixing main executable Qt framework references ---"
+          otool -L "$EXECUTABLE_PATH" 2>/dev/null | grep -E "(/opt/homebrew|$BREW_PREFIX).*\.framework" | awk '{print $1}' | while read -r qt_framework_path; do
+            if [[ "$qt_framework_path" == *".framework/"* ]]; then
+              framework_path=$(echo "$qt_framework_path" | sed -E 's|(.*/[^/]+\.framework)/.*|\1|')
+              framework_name=$(basename "$framework_path" .framework)
+              
+              # Copy framework if not already in bundle
+              if [ ! -d "$FRAMEWORKS_PATH/$framework_name.framework" ]; then
+                if [ -d "$framework_path" ]; then
+                  echo "Copying Qt framework $framework_name to bundle"
+                  cp -R "$framework_path" "$FRAMEWORKS_PATH/"
+                  # Update framework's install name
+                  framework_binary="$FRAMEWORKS_PATH/$framework_name.framework/$framework_name"
+                  if [ ! -f "$framework_binary" ]; then
+                    framework_binary="$FRAMEWORKS_PATH/$framework_name.framework/Versions/Current/$framework_name"
+                  fi
+                  if [ -f "$framework_binary" ]; then
+                    install_name_tool -id "@rpath/$framework_name.framework/Versions/A/$framework_name" "$framework_binary" 2>/dev/null || true
+                  fi
+                fi
+              fi
+              
+              # Update main executable's reference to use @rpath
+              new_ref="@rpath/$framework_name.framework/Versions/A/$framework_name"
+              echo "Updating main executable: $qt_framework_path -> $new_ref"
+              install_name_tool -change "$qt_framework_path" "$new_ref" "$EXECUTABLE_PATH" 2>/dev/null || true
+            fi
+          done
+          
           # Function to get the actual binary from a framework path
           get_framework_binary() {
             local framework_path="$1"
