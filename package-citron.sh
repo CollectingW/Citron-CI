@@ -55,14 +55,14 @@ BUILD_OUTPUT=$(./uruntime2appimage)
 # Print the captured output to the logs for debugging purposes.
 echo "$BUILD_OUTPUT"
 
-# Automatically find the created AppImage's full path from the output,
+# Automatically find the AppImage path from the output, strip any ANSI color codes,
 # and then use basename to get just the filename.
-SOURCE_APPIMAGE=$(basename "$(echo "$BUILD_OUTPUT" | grep "All done! AppImage at:" | awk '{print $NF}')")
+SOURCE_APPIMAGE=$(basename "$(echo "$BUILD_OUTPUT" | grep "All done! AppImage at:" | awk '{print $NF}' | sed 's/\x1b\[[0-9;]*m//g')")
 
 echo "Discovered source AppImage: ${SOURCE_APPIMAGE}"
 echo "Renaming to final suffixed name: ${OUTNAME_APPIMAGE}..."
 
-# Now, use the dynamically discovered filename for the move operations.
+# Now, use the dynamically discovered and cleaned filename for the move operations.
 mv -v "${SOURCE_APPIMAGE}" "${OUTNAME_APPIMAGE}"
 mv -v "${SOURCE_APPIMAGE}.zsync" "${OUTNAME_APPIMAGE}.zsync"
 
