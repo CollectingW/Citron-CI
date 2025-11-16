@@ -49,12 +49,20 @@ echo "Successfully created $OUTNAME_TAR"
 wget --retry-connrefused --tries=30 "$URUNTIME" -O ./uruntime2appimage
 chmod +x ./uruntime2appimage
 
-./uruntime2appimage
+# Run the AppImage creation tool and capture its output to a variable.
+BUILD_OUTPUT=$(./uruntime2appimage)
 
-echo "Renaming versioned AppImage to the final suffixed name: ${OUTNAME_APPIMAGE}..."
+# Print the captured output to the logs for debugging purposes.
+echo "$BUILD_OUTPUT"
 
-SOURCE_APPIMAGE="citron_nightly-${APP_VERSION}-${ARCH}.AppImage"
+# Automatically find the created AppImage's full path from the output,
+# and then use basename to get just the filename.
+SOURCE_APPIMAGE=$(basename "$(echo "$BUILD_OUTPUT" | grep "All done! AppImage at:" | awk '{print $NF}')")
 
+echo "Discovered source AppImage: ${SOURCE_APPIMAGE}"
+echo "Renaming to final suffixed name: ${OUTNAME_APPIMAGE}..."
+
+# Now, use the dynamically discovered filename for the move operations.
 mv -v "${SOURCE_APPIMAGE}" "${OUTNAME_APPIMAGE}"
 mv -v "${SOURCE_APPIMAGE}.zsync" "${OUTNAME_APPIMAGE}.zsync"
 
