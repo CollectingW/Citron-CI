@@ -14,6 +14,7 @@ jobs:
       new_hash: ${{ steps.upstream.outputs.hash_short }}
       new_hash_full: ${{ steps.upstream.outputs.hash_full }}
       branch_name: ${{ steps.branch_check.outputs.branch_name }}
+
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
@@ -22,7 +23,7 @@ jobs:
         id: branch_check
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          FEATURE="NULL"
+          FEATURE="feature/android-game-file-extraction"
 
           if git ls-remote --heads "$REPO_URL" "$FEATURE" | grep -q "$FEATURE"; then
             BRANCH_NAME="$FEATURE"
@@ -91,11 +92,13 @@ jobs:
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
       branch_name: ${{ needs.check-version.outputs.branch_name }}
+
     steps:
       - name: Clone Citron Source Code
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          FEATURE="feat/vulkan-mobile-gpu-compatibility-layer"
+          FEATURE="feature/android-game-file-extraction"
+          
           if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
             echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
             git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
@@ -244,10 +247,10 @@ jobs:
         if: success()
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-android"
-          if [ "${{ env.BRANCH_NAME }}" = "feat/vulkan-mobile-gpu-compatibility-layer" ]; then
-            BRANCH_EMOJI="🌿"
-            BRANCH_DESC="Mobile GPU Compatibility Layer"
-            EXPERIMENTAL_FEATURES="\n🔬 **Experimental Features:**\n• Qualcomm Adreno driver compatibility\n• ARM Mali driver compatibility\n• Samsung Xclipse driver compatibility\n• Enhanced mobile GPU stability"
+          if [ "${{ env.BRANCH_NAME }}" = "feature/android-game-file-extraction" ]; then
+            BRANCH_EMOJI="🍋"
+            BRANCH_DESC="Game File Extraction"
+            EXPERIMENTAL_FEATURES="\n🔬 **New Features:**\n• RomFS dumping support\n• ExeFS dumping support\n• Custom dump location selection"
           else
             BRANCH_EMOJI="📦"
             BRANCH_DESC="Main Branch"
@@ -260,4 +263,3 @@ jobs:
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"🤖 **New Android Build Available!**\n\n📦 **Version:** \`${{ env.GIT_HASH }}\`\n📅 **Date:** ${{ env.DATE }}\n$BRANCH_EMOJI **Branch:** $BRANCH_DESC$EXPERIMENTAL_FEATURES\n🔗 **Download:** $DOWNLOAD_URL\"}" \
                "$WEBHOOK_URL"
-
