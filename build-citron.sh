@@ -76,6 +76,7 @@ cmake .. -GNinja \
     -DCMAKE_CXX_FLAGS="$ARCH_FLAGS -Wno-error -w ${CXX_FLAGS_EXTRA}" \
     -DCMAKE_C_FLAGS="$ARCH_FLAGS" \
     -DCMAKE_SYSTEM_PROCESSOR="$(uname -m)" \
+    -DCITRON_BUILD_TYPE=Nightly \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
