@@ -29,9 +29,13 @@ fi
 find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's/\bboost::asio::io_service\b/boost::asio::io_context/g'
 find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's/\bboost::asio::io_service::strand\b/boost::asio::strand<boost::asio::io_context::executor_type>/g'
 find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's|#include *<boost/process/async_pipe.hpp>|#include <boost/process/v1/async_pipe.hpp>|g'
-find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's/\bboost::process::async_pipe\b/boost::process::v1::async_pipe/g'
+find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's/\bboost::process::async_pipe\b/boost::process::v1/async_pipe/g'
 sed -i '/sse2neon/d' ./src/video_core/CMakeLists.txt
 sed -i 's/cmake_minimum_required(VERSION 2.8)/cmake_minimum_required(VERSION 3.5)/' externals/xbyak/CMakeLists.txt
+
+# --- Remove 1-second delay from LAN discovery ---
+sed -i '/std::this_thread::sleep_for(std::chrono::seconds(1));/s/^/\/\//' ./src/core/hle/service/ldn/lan_discovery.cpp
+
 
 # --- Find Qt6 Private Headers ---
 HEADER_PATH=$(pacman -Ql qt6-base | grep 'qpa/qplatformnativeinterface.h$' | awk '{print $2}')
