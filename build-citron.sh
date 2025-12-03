@@ -33,8 +33,8 @@ find . -type f \( -name '*.cpp' -o -name '*.h' \) | xargs sed -i 's/\bboost::pro
 sed -i '/sse2neon/d' ./src/video_core/CMakeLists.txt
 sed -i 's/cmake_minimum_required(VERSION 2.8)/cmake_minimum_required(VERSION 3.5)/' externals/xbyak/CMakeLists.txt
 
-# --- Remove 1-second delay from LAN discovery ---
-sed -i '/std::this_thread::sleep_for(std::chrono::seconds(1));/s/^/\/\//' ./src/core/hle/service/ldn/lan_discovery.cpp
+# --- Reduce LAN discovery delay to prevent timeouts ---
+sed -i 's/std::this_thread::sleep_for(std::chrono::seconds(1))/std::this_thread::sleep_for(std::chrono::milliseconds(100))/' ./src/core/hle/service/ldn/lan_discovery.cpp
 
 
 # --- Find Qt6 Private Headers ---
