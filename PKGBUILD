@@ -22,7 +22,7 @@ makedepends=(
 )
 
 # This points to the source code repository
-source=("git+https://git.citron-emu.org/citron/emulator.git")
+source=("git+https://git.citron-emu.org/Citron/Emulator.git#branch=fix/audio-biquad-filter-metroid-prime-4")
 sha256sums=('SKIP')
 
 # This function automatically generates a version string based on the latest git commit

@@ -25,7 +25,8 @@ jobs:
         id: upstream
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          BRANCH="fix/audio-biquad-filter-metroid-prime-4"
+          FULL_HASH=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
           echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
@@ -103,7 +104,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Checkout Upstream Source Code
-        run: git clone --recurse-submodules https://git.citron-emu.org/Citron/Emulator.git emulator
+        run: git clone --recurse-submodules -b fix/audio-biquad-filter-metroid-prime-4 https://git.citron-emu.org/Citron/Emulator.git emulator
 
       - name: Prepare Build Environment
         run: |
@@ -159,7 +160,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Checkout Upstream Repository
-        run: git clone https://git.citron-emu.org/Citron/Emulator.git upstream_repo
+        run: git clone -b fix/audio-biquad-filter-metroid-prime-4 https://git.citron-emu.org/Citron/Emulator.git upstream_repo
 
       - name: Set Version
         id: version

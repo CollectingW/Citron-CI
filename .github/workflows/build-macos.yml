@@ -24,7 +24,8 @@ jobs:
         id: upstream
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          BRANCH="fix/audio-biquad-filter-metroid-prime-4"
+          FULL_HASH=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH" | cut -f1)
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
           echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
@@ -71,7 +72,7 @@ jobs:
           brew install ninja boost catch2 cmake enet fmt ffmpeg glslang hidapi libvpx lld llvm mbedtls nasm nlohmann-json openal-soft sdl2 molten-vk vulkan-headers vulkan-loader webp
 
       - name: Clone Citron Source
-        run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
+        run: git clone --recursive -b fix/audio-biquad-filter-metroid-prime-4 "https://git.citron-emu.org/Citron/Emulator.git" citron
 
       - name: Patch CMakeLists for macOS Compatibility
         working-directory: ./citron
