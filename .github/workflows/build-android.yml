@@ -23,9 +23,17 @@ jobs:
         id: branch_check
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          BRANCH_NAME="fix/audio-biquad-filter-metroid-prime-4"
-          FULL_HASH=$(git ls-remote "$REPO_URL" "refs/heads/$BRANCH_NAME" | cut -f1)
-          echo "✅ Using branch: $BRANCH_NAME"
+          FEATURE="NULL"
+
+          if git ls-remote --heads "$REPO_URL" "$FEATURE" | grep -q "$FEATURE"; then
+            BRANCH_NAME="$FEATURE"
+            FULL_HASH=$(git ls-remote "$REPO_URL" "$FEATURE" | cut -f1)
+            echo "✅ Using feature branch: $BRANCH_NAME"
+          else
+            BRANCH_NAME="main"
+            FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+            echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME"
+          fi
 
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
@@ -89,9 +97,15 @@ jobs:
       - name: Clone Citron Source Code
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          BRANCH_NAME="fix/audio-biquad-filter-metroid-prime-4"
-          echo "🌿 Cloning branch: $BRANCH_NAME"
-          git clone --recursive --depth 1 -b "$BRANCH_NAME" "$REPO_URL" citron_source
+          FEATURE="feature/android-game-file-extraction"
+          
+          if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
+            echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
+            git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
+          else
+            echo "📦 Cloning main branch"
+            git clone --recursive --depth 1 "$REPO_URL" citron_source
+          fi
 
       - name: Clean and Force-Update Submodules
         working-directory: ./citron_source

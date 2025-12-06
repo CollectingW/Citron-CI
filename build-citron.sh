@@ -13,7 +13,7 @@ else
 fi
 
 # --- Source Code Checkout and Versioning ---
-git clone --recursive -b fix/audio-biquad-filter-metroid-prime-4 "https://git.citron-emu.org/Citron/Emulator.git" ./citron
+git clone --recursive "https://git.citron-emu.org/citron/emulator.git" ./citron
 cd ./citron
 
 if [ "$DEVEL" = 'true' ]; then
