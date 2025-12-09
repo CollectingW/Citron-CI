@@ -153,13 +153,14 @@ jobs:
           FRAMEWORKS_PATH="$APP_BUNDLE_PATH/Contents/Frameworks"
           EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/citron"
 
-          # --- Step 1: Use macdeployqt ONLY for Qt frameworks and plugins ---
+          # --- Step 1: Use macdeployqt for Qt frameworks and plugins ---
+          # This sets up the basic app structure with all necessary Qt components.
           MACDEPLOYQT_PATH=$(find "$PWD/citron/build" -name "macdeployqt" -type f | head -n 1)
           if [ -z "$MACDEPLOYQT_PATH" ]; then echo "::error::Could not find macdeployqt from the build!" && exit 1; fi
           "$MACDEPLOYQT_PATH" "$APP_BUNDLE_PATH" -verbose=1
 
-          # --- Step 2: Use dylibbundler for EVERYTHING ELSE ---
-          dylibbundler -od -b -x "$EXECUTABLE_PATH" -d "$FRAMEWORKS_PATH" -p "$(brew --prefix)/lib"
+          # --- Step 2: Use dylibbundler ---
+          dylibbundler -b -x "$EXECUTABLE_PATH" -d "$FRAMEWORKS_PATH" -p "$(brew --prefix)/lib"
 
           # --- Step 3: Codesign and Create DMG ---
           echo "Applying ad-hoc signature to the application bundle..."
