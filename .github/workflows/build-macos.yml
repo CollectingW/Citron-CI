@@ -121,6 +121,7 @@ jobs:
           
           cmake -B build -S . -G "Ninja" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_SKIP_BUILD_RPATH=TRUE \
             -DCITRON_USE_FASTER_LD=OFF \
             -DCMAKE_PREFIX_PATH="$BREW_PREFIX;$LLVM_DIR_BREW;$OPENAL_DIR;$SDL2_DIR" \
             -DLLVM_DIR="$LLVM_DIR_BREW/lib/cmake/llvm" \
@@ -147,6 +148,7 @@ jobs:
         run: |
           set -ex # Exit on error and print commands
           
+          # --- Basic Setup ---
           mkdir -p dist
           APP_BUNDLE_PATH=$(find citron/build -name "citron.app" | head -n 1)
           if [ -z "$APP_BUNDLE_PATH" ]; then echo "::error::Could not find citron.app bundle!" && exit 1; fi
@@ -154,12 +156,11 @@ jobs:
           EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/citron"
 
           # --- Step 1: Use macdeployqt for Qt frameworks and plugins ---
-          # This sets up the basic app structure with all necessary Qt components.
           MACDEPLOYQT_PATH=$(find "$PWD/citron/build" -name "macdeployqt" -type f | head -n 1)
           if [ -z "$MACDEPLOYQT_PATH" ]; then echo "::error::Could not find macdeployqt from the build!" && exit 1; fi
           "$MACDEPLOYQT_PATH" "$APP_BUNDLE_PATH" -verbose=1
 
-          # --- Step 2: Use dylibbundler ---
+          # --- Step 2: Use dylibbundler to ADD missing Homebrew libraries ---
           dylibbundler -b -x "$EXECUTABLE_PATH" -d "$FRAMEWORKS_PATH" -p "$(brew --prefix)/lib"
 
           # --- Step 3: Codesign and Create DMG ---
