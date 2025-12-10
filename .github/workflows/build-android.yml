@@ -63,7 +63,7 @@ jobs:
         abi: [arm64-v8a, x86_64]
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-all-dev 
+        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-dev
       - name: Clone Fresh Citron Source Code
         run: |
           # <-- FIX: Added a retry loop to handle network timeouts
@@ -116,7 +116,7 @@ jobs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-all-dev
+        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-dev
       - name: Clone Fresh Citron Source Code
         run: |
           # <-- FIX: Added a retry loop to handle network timeouts
