@@ -183,9 +183,172 @@ jobs:
           name: citron-android-nightly
           path: citron_source/src/android/app/build/outputs/apk/mainline/release/*.apk
 
+  build-android-8elite:
+    name: Build Android APK (Snapdragon 8 Elite)
+    needs: [check-version]
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      git_hash: ${{ steps.get_hash.outputs.git_hash }}
+      branch_name: ${{ needs.check-version.outputs.branch_name }}
+
+    env:
+      TARGET: Lyb
+      MODEL: "8 Elite"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_SLOPPINESS: time_macros
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
+
+      - name: Clone Citron Source Code
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FEATURE="feature/android-game-file-extraction"
+          
+          if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
+            echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
+            git clone --recurse-submodules --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
+          else
+            echo "📦 Cloning main branch"
+            git clone --recurse-submodules --depth 1 "$REPO_URL" citron_source
+          fi
+
+      - name: Clean and Force-Update Submodules
+        working-directory: ./citron_source
+        run: |
+          git submodule deinit --all --force
+          git submodule update --init --recursive --force
+
+      - name: Get Citron Commit Hash
+        id: get_hash
+        working-directory: ./citron_source
+        run: echo "git_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Apply All Patches (Snapdragon 8 Elite)
+        working-directory: ./citron_source
+        run: |
+          echo "Applying Snapdragon 8 Elite patches..."
+
+          # --- Patch 1: Force System Driver Load (native.cpp) ---
+          sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
+
+          # --- Patch 2: 8 Elite Fixes for Qualcomm (vulkan_device.h) ---
+          sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
+          sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
+
+          # --- Patch 3: 8 Elite & Cleanup Fixes (vulkan_device.cpp) ---
+          # 3a: Delete the original `device_id` variable declaration.
+          sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
+          
+          # 3b: Replace all usages of the now-deleted `device_id` with its full source path to prevent compile errors.
+          sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
+
+          # 3c: This is the corrected logic: Instead of adding a new variable, we use the `driver_id`
+          # variable that already exists in the correct C++ scope. This fixes the compile error.
+          sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
+          
+          echo "All patches applied successfully."
+
+      - name: Setup and Restore Cache
+        uses: actions/cache@v4
+        id: ccache-cache
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-android-ccache-${{ env.TARGET }}-${{ github.ref_name }}-${{ hashFiles('citron_source/**/CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-android-ccache-${{ env.TARGET }}-${{ github.ref_name }}-
+            ${{ runner.os }}-android-ccache-${{ env.TARGET }}-
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            wget unzip curl git cmake build-essential \
+            pkg-config zip glslang-tools nasm perl \
+            autoconf automake libtool yasm
+
+      - name: Install Android SDK Command-line Tools
+        run: |
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
+
+      - name: Set up Android Environment Variables
+        run: |
+          echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
+          echo "$PWD/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Configure CMake for Android
+        run: |
+          cmake -B build-android -S citron_source \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-30 \
+            -DANDROID_ARM_NEON=ON \
+            -DENABLE_QT=OFF \
+            -DENABLE_SDL2=OFF \
+            -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_OPENSSL=OFF \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=ON \
+            -DCITRON_ENABLE_LTO=ON
+
+      - name: Build with CMake
+        run: |
+          cmake --build build-android --config Release --parallel $(nproc)
+
+      - name: Compile Android APK (Snapdragon 8 Elite)
+        working-directory: ./citron_source/src/android
+        run: |
+          # The git command needs to run from the cloned git repo to get the correct commit count
+          COUNT="$(git -C ../.. rev-list --count HEAD)"
+          APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
+          
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          chmod +x ./gradlew
+          BUILD_ARGS="-PCITRON_ANDROID_ARGS=\"-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON\""
+          ./gradlew assembleMainlineRelease $BUILD_ARGS
+          
+          APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::Build failed: No APK file was found."
+            exit 1
+          fi
+          
+          mkdir -p artifacts
+          mv "$APK_PATH" "artifacts/$APK_NAME.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: citron-android-8elite
+          path: citron_source/src/android/artifacts/*.apk
+
   release-android:
     name: "Release Android Nightly"
-    needs: [check-version, build-android]
+    needs: [check-version, build-android, build-android-8elite]
     if: needs.check-version.outputs.should_build == 'true'
     permissions:
       contents: write
@@ -195,10 +358,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download APK artifact
+      - name: Download APK artifacts
         uses: actions/download-artifact@v4
         with:
-          name: citron-android-nightly
+          pattern: citron-android-*
+          merge-multiple: true
           path: .
 
       - name: Get version info for release name
@@ -230,6 +394,7 @@ jobs:
             - Build Type: Release with LTO enabled
             - Date: ${{ env.DATE }}
             - Branch: ${{ env.BRANCH_NAME }}
+            - Includes: Standard build + Snapdragon 8 Elite build with Qualcomm patches
 
       - name: Update LATEST_VERSION
         if: success()
