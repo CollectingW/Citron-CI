@@ -92,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+        abi: [arm64-v8a, x86_64]
 
     steps:
       - name: Clone Citron Source Code
@@ -199,15 +199,13 @@ jobs:
       - name: Download all APK artifacts
         uses: actions/download-artifact@v4
         with:
-          path: apks # Download all artifacts into an 'apks' directory
-          pattern: citron-android-nightly-* # Match all artifacts starting with this pattern
-          merge-multiple: true # Merge artifacts from different jobs into one directory
+          path: apks
+          pattern: citron-android-nightly-*
+          merge-multiple: true
 
       - name: Get version info for release name
         shell: bash
         run: |
-          # We need to get the hash from one of the build jobs. It will be the same for all.
-          # A bit of magic to get the output from a matrix job.
           GIT_HASH_JSON='${{ toJSON(needs.build-android.outputs) }}'
           FIRST_KEY=$(echo "$GIT_HASH_JSON" | jq -r 'keys[0]')
           GIT_HASH=$(echo "$GIT_HASH_JSON" | jq -r ".\"$FIRST_KEY\".outputs.git_hash")
@@ -239,7 +237,7 @@ jobs:
             - Date: ${{ env.DATE }}
             - Branch: ${{ env.BRANCH_NAME }}
             
-            APKs for `arm64-v8a`, `armeabi-v7a`, `x86_64`, and `x86` are attached below.
+            APKs for `arm64-v8a` (for devices) and `x86_64` (for emulators/ChromeOS) are attached below.
 
       - name: Update LATEST_VERSION
         if: success()
