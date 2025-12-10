@@ -63,7 +63,7 @@ jobs:
         abi: [arm64-v8a, x86_64]
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl autoconf automake libtool yasm
       - name: Clone Fresh Citron Source Code
         run: git clone --recursive --depth 1 'https://git.citron-emu.org/Citron/Emulator.git' citron_source
       - name: Set up JDK 17
@@ -120,7 +120,7 @@ jobs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl autoconf automake libtool yasm
       - name: Clone Fresh Citron Source Code
         run: git clone --recursive --depth 1 'https://git.citron-emu.org/Citron/Emulator.git' citron_source
       - name: Get Citron Commit Hash
