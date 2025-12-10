@@ -63,10 +63,9 @@ jobs:
         abi: [arm64-v8a, x86_64]
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-dev
+        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm
       - name: Clone Fresh Citron Source Code
         run: |
-          # <-- FIX: Added a retry loop to handle network timeouts
           for i in {1..5}; do
             git clone --recurse-submodules 'https://git.citron-emu.org/Citron/Emulator.git' ./citron_source && break
             echo "Git clone failed. Retrying in 15 seconds..."
@@ -93,7 +92,14 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
       - name: Configure and Build with CMake
         run: |
-          cmake -B build-android -S citron_source -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.abi }} -DANDROID_PLATFORM=android-30 -DENABLE_LTO=ON
+          cmake -B build-android -S citron_source \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-30 \
+            -DENABLE_LTO=ON \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=ON
           cmake --build build-android --config Release --parallel $(nproc)
       - name: Build APK with Gradle
         working-directory: ./citron_source/src/android
@@ -116,10 +122,9 @@ jobs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
     steps:
       - name: Install Dependencies
-        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm libboost-dev
+        run: sudo apt-get update -y && sudo apt-get install -y wget unzip curl git cmake build-essential pkg-config zip nasm perl autoconf automake libtool yasm
       - name: Clone Fresh Citron Source Code
         run: |
-          # <-- FIX: Added a retry loop to handle network timeouts
           for i in {1..5}; do
             git clone --recurse-submodules 'https://git.citron-emu.org/Citron/Emulator.git' ./citron_source && break
             echo "Git clone failed. Retrying in 15 seconds..."
@@ -156,7 +161,14 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
       - name: Configure and Build with CMake
         run: |
-          cmake -B build-android -S citron_source -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-30 -DENABLE_LTO=ON
+          cmake -B build-android -S citron_source \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-30 \
+            -DENABLE_LTO=ON \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=ON
           cmake --build build-android --config Release --parallel $(nproc)
       - name: Build APK with Gradle
         working-directory: ./citron_source/src/android
