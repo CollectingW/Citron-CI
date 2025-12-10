@@ -22,7 +22,7 @@ jobs:
         id: branch_check
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          BRANCH_NAME="main" # We will always build from main for nightly
+          BRANCH_NAME="main"
           FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
@@ -53,26 +53,15 @@ jobs:
           fi
 
   build-android-standard:
-    name: "Build Standard APK for ${{ matrix.abi }}"
+    name: "Build Standard APK (arm64-v8a)"
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        abi: [arm64-v8a, x86_64]
     steps:
       - name: Install Dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl autoconf automake libtool yasm
       - name: Clone Fresh Citron Source Code
         run: git clone --recursive --depth 1 'https://git.citron-emu.org/Citron/Emulator.git' citron_source
-      
-      - name: Apply Universal Compatibility Fix
-        working-directory: ./citron_source
-        run: |
-          echo "Applying universal fix for Adreno-specific code to ensure x86_64 compatibility..."
-          sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
-      
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with: { distribution: 'temurin', java-version: '17' }
@@ -94,7 +83,7 @@ jobs:
           cmake -B build-android -S citron_source \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-30 \
             -DANDROID_ARM_NEON=ON \
             -DENABLE_QT=OFF \
@@ -115,7 +104,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: citron-android-nightly-standard-${{ matrix.abi }}
+          name: citron-android-nightly-standard-arm64-v8a
           path: citron_source/src/android/app/build/outputs/apk/mainline/release/*.apk
 
   build-android-elite:
@@ -138,7 +127,7 @@ jobs:
         working-directory: ./citron_source
         run: |
           echo "Applying '8 Elite' patches for Qualcomm GPU stability and performance..."
-          sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
+          sed -i 's#.*adrenotools_open_libvulkan.*#    handle = dlopen("libvulkan.so", RTLD_NOW);#' src/android/app/src/main/jni/native.cpp
           sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
@@ -230,7 +219,6 @@ jobs:
             ### Downloads
 
             *   **Standard Build (arm64-v8a):** For most modern Android devices.
-            *   **Standard Build (x86_64):** For PC emulators, ChromeOS, and WSA.
             *   **Patched 8 Elite Build (arm64-v8a):** Includes performance and stability patches for Qualcomm Adreno GPUs. **Try this if you experience stutters or crashes.**
             ---
             **Build Date:** ${{ env.DATE }}
