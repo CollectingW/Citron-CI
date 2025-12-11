@@ -87,21 +87,27 @@ jobs:
         shell: bash
         run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
 
-      - name: Configure vcpkg to build dependencies for ARM64
+      - name: Configure vcpkg for ARM64
         if: matrix.arch == 'ARM64'
         working-directory: ./citron
         shell: pwsh
         run: |
-          Write-Host "Forcing ARM64 build to use vcpkg for FFmpeg, SDL2, and HIDAPI..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
-          
-          $json.dependencies += "ffmpeg"
+          $json.dependencies += "ffmpeg[core,swresample,swscale,avcodec,avformat,avutil]"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
-          
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
-          Write-Host "SUCCESS: Correctly patched vcpkg.json to build dependencies."
+
+      - name: Patch Build System to Respect Dependency Flags
+        if: matrix.arch == 'ARM64'
+        working-directory: citron
+        shell: bash
+        run: |
+          echo "Patching externals/CMakeLists.txt to respect build flags..."
+          sed -i 's/add_subdirectory(ffmpeg)/if(CITRON_USE_BUNDLED_FFMPEG)\n  add_subdirectory(ffmpeg)\nendif()/' externals/CMakeLists.txt
+          sed -i 's/add_subdirectory(SDL)/if(CITRON_USE_BUNDLED_SDL2)\n  add_subdirectory(SDL)\nendif()/' externals/CMakeLists.txt
+          sed -i 's/add_subdirectory(hidapi)/if(CITRON_USE_BUNDLED_HIDAPI)\n  add_subdirectory(hidapi)\nendif()/' externals/CMakeLists.txt
 
       - name: Get Nightly Version
         id: version
@@ -112,18 +118,6 @@ jobs:
           VERSION=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
         
-      - name: Apply Dynarmic MSVC Patch for ARM64
-        if: matrix.arch == 'ARM64'
-        working-directory: citron
-        shell: bash
-        run: |
-          sed -i 's/#elif defined(ARCHITECTURE_arm64)/#elif defined(_MSC_VER) \&\& defined(ARCHITECTURE_arm64)\n                    _Memory_barrier();\n#elif defined(ARCHITECTURE_arm64)/g' src/core/arm/dynarmic/dynarmic_cp15.cpp
-          
-      - name: Force Clean Build by Removing Old Cache
-        working-directory: ./citron
-        shell: bash
-        run: rm -rf build
-
       - name: Set VCPKG_BUILD_TYPE for Release-Only Builds
         shell: bash
         run: echo "VCPKG_BUILD_TYPE=release" >> $GITHUB_ENV
@@ -133,22 +127,19 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
-            echo "Configuring for ARM64: Disabling bundled FFmpeg/SDL2 and setting ARM64 triplet."
+            echo "Configuring for ARM64: Disabling ALL bundled dependencies and using ARM64 triplet."
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
               -DVCPKG_TARGET_TRIPLET=arm64-windows \
+              -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
               -DCITRON_USE_BUNDLED_SDL2=OFF \
-              -DCITRON_USE_BUNDLED_VCPKG=ON \
+              -DCITRON_USE_BUNDLED_HIDAPI=OFF \
               -DCITRON_BUILD_TYPE=Nightly \
               -DCITRON_ENABLE_LTO=ON \
               -DCITRON_USE_BUNDLED_QT=ON \
               -DENABLE_QT6=ON \
               -DCITRON_TESTS=OFF \
-              -DUSE_DISCORD_PRESENCE=ON \
-              -DENABLE_WEB_SERVICE=ON \
-              -DENABLE_OPENSSL=ON \
-              -DCITRON_USE_AUTO_UPDATER=ON \
-              -DCITRON_ENABLE_LIBARCHIVE=ON
+              -DUSE_DISCORD_PRESENCE=ON
           else
             echo "Configuring for x64 with default settings."
             cmake -B build -S . -G "Visual Studio 17 2022" -A x64 \
@@ -158,11 +149,7 @@ jobs:
               -DCITRON_USE_BUNDLED_QT=ON \
               -DENABLE_QT6=ON \
               -DCITRON_TESTS=OFF \
-              -DUSE_DISCORD_PRESENCE=ON \
-              -DENABLE_WEB_SERVICE=ON \
-              -DENABLE_OPENSSL=ON \
-              -DCITRON_USE_AUTO_UPDATER=ON \
-              -DCITRON_ENABLE_LIBARCHIVE=ON
+              -DUSE_DISCORD_PRESENCE=ON
           fi
 
       - name: Build Citron
@@ -174,16 +161,9 @@ jobs:
         shell: pwsh
         run: |
           mkdir dist
-          mkdir temp_package
-          Get-ChildItem ".\citron\build\bin\Release\" -Recurse | Where-Object { $_.Extension -ne ".pdb" } | ForEach-Object {
-            $relativePath = $_.FullName.Replace((Resolve-Path ".\citron\build\bin\Release\").Path, "").TrimStart('\')
-            $destPath = Join-Path ".\temp_package" $relativePath
-            $destDir = Split-Path $destPath -Parent
-            if (!(Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-            Copy-Item $_.FullName $destPath -Force
-          }
-          Compress-Archive -Path ".\temp_package\*" -DestinationPath ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
-          Remove-Item ".\temp_package" -Recurse -Force
+          $pkg_dir = ".\citron\build\bin\Release"
+          $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
+          Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
 
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
@@ -256,9 +236,6 @@ jobs:
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-windows"
           DATE=$(date +'%Y-%m-%d')
           WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
-          if [ -z "$WEBHOOK_URL" ]; then
-            WEBHOOK_URL="https://discord.com/api/webhooks/1428304731809517588/fG7t7MBprKFss5oGcI05DIFM3JdO41Z0juSV_zOfb9K-UTvyI2fd3-Ciwi48npWXYHLb"
-          fi
           curl -H "Content-Type: application/json" \
                -d "{\"content\":\"🪟 **New Windows Build Available!**\n\n📦 **Version:** \`${{ env.APP_VERSION }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\"}" \
                "$WEBHOOK_URL"
