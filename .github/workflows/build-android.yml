@@ -483,14 +483,35 @@ jobs:
             exit 1
           fi
           
-          mkdir -p ../../../artifacts
-          mv "$APK_PATH" "../../../artifacts/$APK_NAME.apk"
+          echo "Found APK at: $APK_PATH"
+          echo "Current directory: $(pwd)"
+          
+          # Create artifacts directory in citron_source (../../ from src/android)
+          mkdir -p ../../artifacts
+          echo "Created artifacts directory at: $(realpath ../../artifacts)"
+          
+          mv "$APK_PATH" "../../artifacts/$APK_NAME.apk"
+          echo "APK moved to: ../../artifacts/$APK_NAME.apk"
+          echo "Verifying file exists:"
+          ls -lh ../../artifacts/ || true
+          echo "Absolute path: $(realpath ../../artifacts/$APK_NAME.apk)"
+
+      - name: Verify APK exists before upload
+        run: |
+          echo "Checking for APK files..."
+          ls -lah citron_source/artifacts/ || echo "Artifacts directory not found"
+          find citron_source/artifacts -name "*.apk" -type f || echo "No APK files found"
+          if [ ! -d "citron_source/artifacts" ] || [ -z "$(find citron_source/artifacts -name '*.apk' -type f)" ]; then
+            echo "::error::APK file not found in citron_source/artifacts/"
+            exit 1
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: citron-android-8elite
           path: citron_source/artifacts/*.apk
+          if-no-files-found: error
 
   release-android:
     name: "Release Android Nightly"
