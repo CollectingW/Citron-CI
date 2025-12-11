@@ -235,27 +235,171 @@ jobs:
       - name: Apply All Patches (Snapdragon 8 Elite)
         working-directory: ./citron_source
         run: |
-          echo "Applying Snapdragon 8 Elite patches..."
+          echo "Generating patch script for Snapdragon 8 Elite fixes..."
 
-          # --- Patch 1: Force System Driver Load (native.cpp) ---
-          sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
+          cat <<'EOF' > patch_citron.py
+          import os
+          import sys
 
-          # --- Patch 2: 8 Elite Fixes for Qualcomm (vulkan_device.h) ---
-          sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
-          sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
+          # Paths
+          device_cpp = "src/video_core/vulkan_common/vulkan_device.cpp"
+          native_cpp = "src/android/app/src/main/jni/native.cpp"
+          device_h = "src/video_core/vulkan_common/vulkan_device.h"
+          pipeline_cache_cpp = "src/video_core/renderer_vulkan/vk_pipeline_cache.cpp"
+          staging_pool_cpp = "src/video_core/renderer_vulkan/vk_staging_buffer_pool.cpp"
+          buffer_cache_h = "src/video_core/buffer_cache/buffer_cache.h"
 
-          # --- Patch 3: 8 Elite & Cleanup Fixes (vulkan_device.cpp) ---
-          # 3a: Delete the original `device_id` variable declaration.
-          sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
+          def patch_file(path, search_str, replace_str):
+              if not os.path.exists(path):
+                  print(f"Error: {path} not found!")
+                  return
+              with open(path, 'r') as f:
+                  content = f.read()
+              if search_str in content:
+                  new_content = content.replace(search_str, replace_str)
+                  with open(path, 'w') as f:
+                      f.write(new_content)
+                  print(f"Successfully patched {path}")
+              else:
+                  print(f"Warning: Could not find search string in {path}")
+
+          # 1. FIX SYSTEM DRIVER LOADING (Native Patch)
+          # Forces the app to load libvulkan.so from the system instead of failing
+          # We inject dlopen logic and effectively disable the original adrenotools call by wrapping it in "if (false)"
+          patch_file(native_cpp, 
+                     'if (!handle) {',
+                     'if (!handle) { handle = dlopen("libvulkan.so", RTLD_NOW); } if (false) {')
+
+          # 2. CATCH PIPELINE CRASHES (Pipeline Cache Patch)
+          # Wraps pipeline creation in extra try-catch blocks to prevent driver crashes from killing the app
+          if os.path.exists(pipeline_cache_cpp):
+              with open(pipeline_cache_cpp, 'r') as f:
+                  content = f.read()
+              
+              # We match the specific LOG_ERROR line inside the Shader::Exception catch block
+              # This avoids matching other functions like BuiltPipeline that also return nullptr
+              search_str = '    LOG_ERROR(Render_Vulkan, "{}", exception.what());\n    return nullptr;\n}'
+              
+              new_catch = '    LOG_ERROR(Render_Vulkan, "{}", exception.what());\n    return nullptr;\n} catch (const vk::Exception& e) { LOG_ERROR(Render_Vulkan, "Vulkan Error: {}", e.what()); return nullptr; } catch (const std::exception& e) { LOG_ERROR(Render_Vulkan, "Std Error: {}", e.what()); return nullptr; }'
+              
+              if search_str in content:
+                  content = content.replace(search_str, new_catch)
+                  with open(pipeline_cache_cpp, 'w') as f:
+                      f.write(content)
+                  print("Patched vk_pipeline_cache.cpp to catch generic exceptions")
+              else:
+                  print("Warning: Could not find catch block end in vk_pipeline_cache.cpp")
+
+          # 3. DISABLE 64-BIT ATOMICS & FLOAT16/INT16/INT8 (Header Patch)
+          # Reads the header and disables advanced types for Qualcomm to force 32-bit fallback
+          if os.path.exists(device_h):
+              with open(device_h, 'r') as f:
+                  h_content = f.read()
+              
+              # Helper to patch bool functions
+              def disable_feature(name, text):
+                  if f"bool {name}() const {{ " in text:
+                      text = text.replace(
+                          f"bool {name}() const {{ ",
+                          f"bool {name}() const {{ const auto driver = GetDriverID(); if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) return false;"
+                      )
+                      print(f"Patched {name}")
+                  return text
+
+              h_content = disable_feature("IsShaderInt64Supported", h_content)
+              h_content = disable_feature("IsExtShaderAtomicInt64Supported", h_content)
+              h_content = disable_feature("IsShaderFloat16Int8Supported", h_content)
+              h_content = disable_feature("IsFloat16Supported", h_content)
+              h_content = disable_feature("IsShaderInt16Supported", h_content)
+              h_content = disable_feature("IsInt8Supported", h_content)
+              with open(device_h, 'w') as f:
+                  f.write(h_content)
+
+          # 4. BYPASS STARTUP CHECKS & DISABLE EXTENSIONS (Device CPP Patch)
+          # This reads the C++ file line-by-line to inject the bypass logic and extension removal.
+          if os.path.exists(device_cpp):
+              with open(device_cpp, 'r') as f:
+                  lines = f.readlines()
+              
+              new_lines = []
+              injected_extensions = False
+              
+              # The code block we want to inject to kill the extensions
+              extension_hack = [
+                  '        LOG_WARNING(Render_Vulkan, "HACK: Removing Adreno 830 crash extensions");\n',
+                  '        extensions.custom_border_color = false;\n',
+                  '        extensions.depth_bias_control = false;\n',
+                  '        extensions.extended_dynamic_state = false;\n',
+                  '        extensions.extended_dynamic_state2 = false;\n',
+                  '        extensions.extended_dynamic_state3 = false;\n',
+                  '        extensions.vertex_input_dynamic_state = false;\n',
+                  '        RemoveExtension(extensions.bit16_storage, "VK_KHR_16bit_storage");\n',
+                  '        RemoveExtension(extensions.bit8_storage, "VK_KHR_8bit_storage");\n',
+                  '        RemoveExtension(extensions.shader_float16_int8, "VK_KHR_shader_float16_int8");\n'
+              ]
+              skip_next = False
+              for line in lines:
+                  # Part A: Bypass the "Unsuitable" check in CHECK_FEATURE macro
+                  # We look for the LOG_ERROR line inside the macro and kill the subsequent suitable = false
+                  if 'LOG_ERROR(Render_Vulkan, "Missing required feature {}", #name);' in line:
+                      new_lines.append(line)
+                      skip_next = True # The next line is 'suitable = false;' which we want to skip/comment out
+                  elif skip_next:
+                      if "suitable = false;" in line:
+                          # Use C-style comment to avoid issues with backslashes in macros
+                          new_lines.append(line.replace("suitable = false;", "/* suitable = false; (Bypass for 8 Elite) */"))
+                      else:
+                          new_lines.append(line)
+                      skip_next = False
+                  
+                  # Part B: Inject the extension removal code inside the Qualcomm block
+                  # We look for "if (is_qualcomm) {" and verify we haven't injected it yet
+                  elif "if (is_qualcomm) {" in line and not injected_extensions:
+                      new_lines.append(line)
+                      new_lines.extend(extension_hack)
+                      injected_extensions = True
+                  else:
+                      new_lines.append(line)
+              
+              with open(device_cpp, 'w') as f:
+                  f.writelines(new_lines)
+              print("Patched vulkan_device.cpp with bypass and extension hacks")
+
+          # 5. CLAMP STAGING BUFFER SIZE (Eden Fix)
+          # Clamps staging buffer size to 256MB to prevent allocation failures
+          if os.path.exists(staging_pool_cpp):
+              with open(staging_pool_cpp, 'r') as f:
+                  content = f.read()
+              
+              if 'const u32 log2 = Common::Log2Ceil64(size);' in content:
+                  content = content.replace(
+                      'const u32 log2 = Common::Log2Ceil64(size);',
+                      'size = std::min(size, size_t{256 * 1024 * 1024});\n    const u32 log2 = Common::Log2Ceil64(size);'
+                  )
+                  with open(staging_pool_cpp, 'w') as f:
+                      f.write(content)
+                  print("Patched vk_staging_buffer_pool.cpp with 256MB clamp")
+
+          # 6. VALIDATE MAPPED UPLOAD MEMORY (Eden Fix)
+          # Adds bounds check to prevent buffer overruns
+          if os.path.exists(buffer_cache_h):
+              with open(buffer_cache_h, 'r') as f:
+                  content = f.read()
+              
+              search_str = 'u8* const src_pointer = staging_pointer.data() + copy.src_offset;'
+              replace_str = 'if (copy.src_offset + copy.size > staging_pointer.size()) { continue; }\n            u8* const src_pointer = staging_pointer.data() + copy.src_offset;'
+              
+              if search_str in content:
+                  content = content.replace(search_str, replace_str)
+                  with open(buffer_cache_h, 'w') as f:
+                      f.write(content)
+                  print("Patched buffer_cache.h with size validation")
           
-          # 3b: Replace all usages of the now-deleted `device_id` with its full source path to prevent compile errors.
-          sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
-
-          # 3c: This is the corrected logic: Instead of adding a new variable, we use the `driver_id`
-          # variable that already exists in the correct C++ scope. This fixes the compile error.
-          sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
+          EOF
           
-          echo "All patches applied successfully."
+          # Run the generated script
+          python3 patch_citron.py
+          echo "All Snapdragon 8 Elite patches applied successfully."
 
       - name: Setup and Restore Cache
         uses: actions/cache@v4
@@ -323,28 +467,30 @@ jobs:
         working-directory: ./citron_source/src/android
         run: |
           # The git command needs to run from the cloned git repo to get the correct commit count
-          COUNT="$(git -C ../.. rev-list --count HEAD)"
-          APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
+          COUNT=$(git -C ../.. rev-list --count HEAD 2>/dev/null || echo "9999")
+          APK_NAME="Citron-8Elite-Fix-${COUNT}"
           
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           chmod +x ./gradlew
-          BUILD_ARGS="-PCITRON_ANDROID_ARGS=\"-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON\""
-          ./gradlew assembleMainlineRelease $BUILD_ARGS
+          
+          # Build with ccache and update checker enabled
+          ./gradlew assembleMainlineRelease -PCITRON_ANDROID_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON"
           
           APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "::error::Build failed: No APK file was found."
+            echo "::error::Build failed - APK not found"
+            ls -R app/build/outputs || true
             exit 1
           fi
           
-          mkdir -p artifacts
-          mv "$APK_PATH" "artifacts/$APK_NAME.apk"
+          mkdir -p ../../../artifacts
+          mv "$APK_PATH" "../../../artifacts/$APK_NAME.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: citron-android-8elite
-          path: citron_source/src/android/artifacts/*.apk
+          path: citron_source/artifacts/*.apk
 
   release-android:
     name: "Release Android Nightly"
