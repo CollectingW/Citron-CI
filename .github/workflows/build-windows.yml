@@ -92,13 +92,16 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
+          Write-Host "Forcing ARM64 build to use vcpkg for FFmpeg, SDL2, and HIDAPI..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
-          $json.dependencies += "ffmpeg[core,swresample,swscale,avcodec,avformat,avutil]"
+
+          $json.dependencies += "ffmpeg"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
+          
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
-
+          Write-Host "SUCCESS: Correctly patched vcpkg.json to build dependencies."
       - name: Patch Build System to Respect Dependency Flags
         if: matrix.arch == 'ARM64'
         working-directory: citron
