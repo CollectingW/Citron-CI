@@ -95,31 +95,29 @@ jobs:
           Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
-
           $json.dependencies += "ffmpeg"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
           $json.dependencies += "getopt"
-          
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
           Write-Host "SUCCESS: Correctly patched vcpkg.json to build all dependencies."
 
-      - name: '[FIX] Apply Dynarmic MSVC Patch for ARM64'
+      - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
         shell: bash
         run: |
+          echo "Patching dynarmic for MSVC ARM64..."
           sed -i 's/#elif defined(ARCHITECTURE_arm64)/#elif defined(_MSC_VER) \&\& defined(ARCHITECTURE_arm64)\n                    _Memory_barrier();\n#elif defined(ARCHITECTURE_arm64)/g' src/core/arm/dynarmic/dynarmic_cp15.cpp
-      
-      - name: '[FIX] Patch All Buggy CMake Files'
-        if: matrix.arch == 'ARM64'
-        working-directory: citron
-        shell: bash
-        run: |
+          
           echo "Patching src/citron/CMakeLists.txt to respect build flags..."
           sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)\n    copy_citron_SDL_deps(citron)\nendif()\n\nif (MSVC AND CITRON_USE_BUNDLED_FFMPEG)/' src/citron/CMakeLists.txt
+          
           echo "Patching src/citron_cmd/CMakeLists.txt to respect build flags..."
           sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)/' src/citron_cmd/CMakeLists.txt
+          
+          echo "Patching src/citron_cmd/CMakeLists.txt to use static getopt..."
+          sed -i '/target_link_libraries(citron-cmd PRIVATE getopt)/a target_compile_definitions(citron-cmd PRIVATE GETOPT_STATIC)' src/citron_cmd/CMakeLists.txt
 
       - name: Get Nightly Version
         id: version
