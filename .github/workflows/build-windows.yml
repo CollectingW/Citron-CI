@@ -92,16 +92,17 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
-          Write-Host "Forcing ARM64 build to use vcpkg for FFmpeg, SDL2, and HIDAPI..."
+          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
 
           $json.dependencies += "ffmpeg"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
+          $json.dependencies += "getopt"
           
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
-          Write-Host "SUCCESS: Correctly patched vcpkg.json to build dependencies."
+          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all dependencies."
 
       - name: '[FIX] Apply Dynarmic MSVC Patch for ARM64'
         if: matrix.arch == 'ARM64'
