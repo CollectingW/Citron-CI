@@ -102,6 +102,18 @@ jobs:
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
           Write-Host "SUCCESS: Correctly patched vcpkg.json to build all dependencies."
 
+      - name: '[FIX] Rip Out Problematic Post-Build Commands'
+        working-directory: citron
+        shell: bash
+        run: |
+          echo "Searching for and removing faulty post-build commands..."
+          find src -name "CMakeLists.txt" | while read -r file; do
+            if grep -q 'make_directory.*user' "$file"; then
+              echo "Found and removing faulty command from: $file"
+              perl -0777 -i -pe 's/if\(WIN32\)\n\s*add_custom_command\(TARGET .*? POST_BUILD.*?COMMENT "Creating portable user directory.*?".*?\)\nendif\(\)//s' "$file"
+            fi
+          done
+
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
@@ -162,7 +174,7 @@ jobs:
       - name: Build Citron
         working-directory: ./citron
         shell: cmd
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel
 
       - name: Package Windows Build
         shell: pwsh
