@@ -116,9 +116,6 @@ jobs:
           echo "Patching src/citron_cmd/CMakeLists.txt to respect build flags..."
           sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)/' src/citron_cmd/CMakeLists.txt
           
-          echo "Patching src/citron_cmd/CMakeLists.txt to use static getopt..."
-          sed -i '/target_link_libraries(citron-cmd PRIVATE getopt)/a target_compile_definitions(citron-cmd PRIVATE GETOPT_STATIC)' src/citron_cmd/CMakeLists.txt
-
       - name: Get Nightly Version
         id: version
         working-directory: ./citron
@@ -139,6 +136,7 @@ jobs:
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
             echo "Configuring for ARM64: Disabling ALL bundled dependencies and using ARM64 triplet."
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
+              -DCMAKE_CXX_FLAGS="-DGETOPT_STATIC" \
               -DVCPKG_TARGET_TRIPLET=arm64-windows \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
