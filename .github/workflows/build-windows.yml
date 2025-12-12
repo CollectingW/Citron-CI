@@ -115,6 +115,9 @@ jobs:
           
           echo "Patching src/citron_cmd/CMakeLists.txt to respect build flags..."
           sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)/' src/citron_cmd/CMakeLists.txt
+
+          echo "Patching src/citron_cmd/CMakeLists.txt to use static getopt..."
+          sed -i '/citron.rc)/a target_compile_definitions(citron-cmd PRIVATE GETOPT_STATIC)' src/citron_cmd/CMakeLists.txt
           
       - name: Get Nightly Version
         id: version
