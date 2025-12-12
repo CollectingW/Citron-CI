@@ -87,6 +87,18 @@ jobs:
         shell: bash
         run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
 
+      - name: '[FIX] Make portable directory creation idempotent'
+        working-directory: citron
+        shell: bash
+        run: |
+          echo "Patching post-build commands to prevent race conditions during parallel builds..."
+          find src -name "CMakeLists.txt" | while read -r file; do
+            if grep -q 'COMMAND \${CMAKE_COMMAND} -E make_directory ".*>/user"' "$file"; then
+              echo "Found and patching problematic command in $file"
+              perl -i -pe 's|COMMAND \${CMAKE_COMMAND} -E make_directory "\\\$<TARGET_FILE_DIR:(.*?)>/user"|COMMAND cmd /c "if not exist \\"\\\$<TARGET_FILE_DIR:\1>/user\\" mkdir \\"\\\$<TARGET_FILE_DIR:\1>/user\\""|g' "$file"
+            fi
+          done
+
       - name: Configure vcpkg for ARM64
         if: matrix.arch == 'ARM64'
         working-directory: ./citron
