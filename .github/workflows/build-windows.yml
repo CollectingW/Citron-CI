@@ -103,6 +103,13 @@ jobs:
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
           Write-Host "SUCCESS: Correctly patched vcpkg.json to build dependencies."
 
+      - name: '[FIX] Apply Dynarmic MSVC Patch for ARM64'
+        if: matrix.arch == 'ARM64'
+        working-directory: citron
+        shell: bash
+        run: |
+          sed -i 's/#elif defined(ARCHITECTURE_arm64)/#elif defined(_MSC_VER) \&\& defined(ARCHITECTURE_arm64)\n                    _Memory_barrier();\n#elif defined(ARCHITECTURE_arm64)/g' src/core/arm/dynarmic/dynarmic_cp15.cpp
+      
       - name: '[FIX] Patch All Buggy CMake Files'
         if: matrix.arch == 'ARM64'
         working-directory: citron
