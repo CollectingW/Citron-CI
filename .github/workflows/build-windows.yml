@@ -115,6 +115,25 @@ jobs:
           
           echo "Patching src/citron_cmd/CMakeLists.txt to disable bundled SDL copy..."
           perl -0777 -i -pe 's/if \(MSVC\)\n    include\(CopyCitronSDLDeps\)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)/g' src/citron_cmd/CMakeLists.txt
+
+      - name: '[FIX] Patch CMakeLists for ARM64 MSVC Linker Circular Dependencies'
+        if: matrix.arch == 'ARM64'
+        working-directory: citron
+        shell: bash
+        run: |
+          echo "Patching src/citron/CMakeLists.txt to resolve ARM64 linker circular dependencies..."
+
+          ORIGINAL_BLOCK="else()
+          target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core)
+          endif()"
+
+          PATCHED_BLOCK="else()
+          target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core common core input_common frontend_common network video_core)
+          endif()"
+
+          perl -i -p0e "s/\Q$ORIGINAL_BLOCK\E/$PATCHED_BLOCK/" src/citron/CMakeLists.txt
+          
+          echo "Patch applied successfully."
           
       - name: Get Nightly Version
         id: version
