@@ -85,7 +85,22 @@ jobs:
 
       - name: Clone Citron Source
         shell: bash
-        run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
+        run: |
+          for i in {1..5}; do
+            echo "Attempting to clone repository (Attempt $i of 5)..."
+            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
+              echo "Clone successful."
+              break
+            fi
+            
+            if [ "$i" -eq 5 ]; then
+              echo "Failed to clone repository after 5 attempts."
+              exit 1
+            fi
+
+            echo "Clone failed. Retrying in 10 seconds..."
+            sleep 10
+          done
 
       - name: Configure vcpkg for ARM64
         if: matrix.arch == 'ARM64'
