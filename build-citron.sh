@@ -3,13 +3,22 @@ set -ex
 
 # --- Architecture and Compiler Flag Setup ---
 ARCH="${ARCH:-$(uname -m)}"
+BUILD_TYPE="${BUILD_TYPE:-Release}" # Default to Release if not set
+
+if [ "$BUILD_TYPE" = 'Debug' ]; then
+    CMAKE_BUILD_TYPE="RelWithDebInfo"
+    BASE_FLAGS="-O0 -g"
+else
+    CMAKE_BUILD_TYPE="Release"
+    BASE_FLAGS="-O3"
+fi
 
 if [ "$1" = 'v3' ] && [ "$ARCH" = 'x86_64' ]; then
-    ARCH_FLAGS="-march=x86-64-v3 -O3 -USuccess -UNone -fuse-ld=lld"
+    ARCH_FLAGS="-march=x86-64-v3 $BASE_FLAGS -USuccess -UNone -fuse-ld=lld"
 elif [ "$ARCH" = 'x86_64' ]; then
-    ARCH_FLAGS="-march=x86-64 -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld"
+    ARCH_FLAGS="-march=x86-64 -mtune=generic $BASE_FLAGS -USuccess -UNone -fuse-ld=lld"
 else
-    ARCH_FLAGS="-march=armv8-a -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld"
+    ARCH_FLAGS="-march=armv8-a -mtune=generic $BASE_FLAGS -USuccess -UNone -fuse-ld=lld"
 fi
 
 # --- Source Code Checkout and Versioning ---
@@ -77,7 +86,7 @@ cmake .. -GNinja \
     -DCMAKE_C_FLAGS="$ARCH_FLAGS" \
     -DCMAKE_SYSTEM_PROCESSOR="$(uname -m)" \
     -DCITRON_BUILD_TYPE=Nightly \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
 # Compile and install the project
