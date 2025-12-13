@@ -82,16 +82,25 @@ jobs:
             artifact_suffix: "_x86_64"
             script_suffix: ""
             build_arg: ""
+            build_type: "Release"
           - name: "Citron Build (Optimized x86_64)"
             os: ubuntu-latest
             artifact_suffix: "_v3"
             script_suffix: "_v3"
             build_arg: "v3"
+            build_type: "Release"
           - name: "Citron Build (aarch64)"
             os: ubuntu-24.04-arm
             artifact_suffix: "_aarch64"
             script_suffix: ""
             build_arg: ""
+            build_type: "Release"
+          - name: "Citron Build (Debug x86_64)"
+            os: ubuntu-latest
+            artifact_suffix: "_debug_x86_64"
+            script_suffix: "_debug"
+            build_arg: ""
+            build_type: "Debug"
 
     container: ghcr.io/pkgforge-dev/archlinux:latest
 
@@ -141,7 +150,7 @@ jobs:
           NPROC_VAL=$(nproc --all)
           JOBS_VAL=$((NPROC_VAL > 4 ? 4 : NPROC_VAL))
           chmod +x ./build-citron.sh
-          JOBS=${JOBS_VAL} DEVEL=true ./build-citron.sh ${{ matrix.build_arg }}
+          JOBS=${JOBS_VAL} DEVEL=true BUILD_TYPE=${{ matrix.build_type }} ./build-citron.sh ${{ matrix.build_arg }}
 
       - name: Package AppImage with Correct Name
         working-directory: ./emulator
