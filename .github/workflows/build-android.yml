@@ -95,17 +95,35 @@ jobs:
 
     steps:
       - name: Clone Citron Source Code
+        shell: bash
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           FEATURE="feature/android-game-file-extraction"
-          
+          BRANCH_ARG="" # Initialize empty branch argument
+
           if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
-            echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-            git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
+            echo "🌿 Preparing to clone feature branch: $FEATURE"
+            BRANCH_ARG="-b $FEATURE"
           else
-            echo "📦 Cloning main branch"
-            git clone --recursive --depth 1 "$REPO_URL" citron_source
+            echo "📦 Preparing to clone main branch"
           fi
+
+          for i in {1..5}; do
+            echo "Attempting to clone repository (Attempt $i of 5)..."
+            
+            if git clone --recursive --depth 1 $BRANCH_ARG "$REPO_URL" citron_source; then
+              echo "✅ Clone successful."
+              break # Exit the loop on success
+            fi
+            
+            if [ "$i" -eq 5 ]; then
+              echo "❌ Failed to clone repository after 5 attempts."
+              exit 1
+            fi
+
+            echo "⚠️ Clone failed. Retrying in 15 seconds..."
+            sleep 15
+          done
 
       - name: Clean and Force-Update Submodules
         working-directory: ./citron_source
