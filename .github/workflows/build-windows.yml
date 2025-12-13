@@ -197,7 +197,7 @@ jobs:
       - name: Build Citron
         working-directory: ./citron
         shell: cmd
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel --verbose
 
       - name: Package Windows Build
         shell: pwsh
