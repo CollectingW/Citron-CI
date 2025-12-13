@@ -71,7 +71,23 @@ jobs:
           brew install ninja boost catch2 cmake enet fmt ffmpeg glslang hidapi libvpx lld llvm nasm nlohmann-json openal-soft sdl2 molten-vk vulkan-headers vulkan-loader webp lz4 zstd openssl@3 pkg-config libusb opus python@3.12
 
       - name: Clone Citron Source
-        run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
+        shell: bash
+        run: |
+          for i in {1..5}; do
+            echo "Attempting to clone repository (Attempt $i of 5)..."
+            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
+              echo "✅ Clone successful."
+              break
+            fi
+            
+            if [ "$i" -eq 5 ]; then
+              echo "❌ Failed to clone repository after 5 attempts."
+              exit 1
+            fi
+
+            echo "⚠️ Clone failed. Retrying in 15 seconds..."
+            sleep 15
+          done
 
       - name: Patch AGL in Qt FindWrapOpenGL.cmake
         working-directory: ./citron
