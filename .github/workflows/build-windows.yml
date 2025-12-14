@@ -112,6 +112,7 @@ jobs:
           Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
+          $json.dependencies += "qt6-base"
           $json.dependencies += "ffmpeg"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
@@ -180,10 +181,9 @@ jobs:
               -DCITRON_USE_BUNDLED_HIDAPI=OFF \
               -DCITRON_BUILD_TYPE=Nightly \
               -DCITRON_ENABLE_LTO=ON \
-              -DCITRON_USE_BUNDLED_QT=ON \
-              -DENABLE_QT6=ON \
+              -DCITRON_USE_BUNDLED_QT=OFF \
               -DCITRON_TESTS=OFF \
-              -DUSE_DISCORD_PRESENCE=ON
+              -DUSE_DISCORD_PRESENCE=OFF
           else
             echo "Configuring for x64 with default settings."
             cmake -B build -S . -G "Visual Studio 17 2022" -A x64 \
@@ -191,7 +191,6 @@ jobs:
               -DCITRON_BUILD_TYPE=Nightly \
               -DCITRON_ENABLE_LTO=ON \
               -DCITRON_USE_BUNDLED_QT=ON \
-              -DENABLE_QT6=ON \
               -DCITRON_TESTS=OFF \
               -DUSE_DISCORD_PRESENCE=ON
           fi
