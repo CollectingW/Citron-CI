@@ -59,7 +59,7 @@ jobs:
     name: "Citron Build (Windows - ${{ matrix.arch }})"
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
