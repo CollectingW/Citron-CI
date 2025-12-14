@@ -109,16 +109,22 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
-          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
+          Write-Host "Updating vcpkg baseline to a more recent version..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
+          
+          $newBaseline = "a7943265551351509903c7372af925bf0e38df7b" 
+          $json.'builtin-baseline' = $newBaseline
+          
+          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $json.dependencies += "qt6-base"
           $json.dependencies += "ffmpeg"
           $json.dependencies += "sdl2"
           $json.dependencies += "hidapi"
           $json.dependencies += "getopt"
+          
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
-          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all dependencies."
+          Write-Host "SUCCESS: Correctly patched vcpkg.json with a new baseline and all required dependencies."
 
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
