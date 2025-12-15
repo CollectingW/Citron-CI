@@ -1,4 +1,4 @@
-name: VCPKG Compile for ARM64
+name: ONE-TIME VCPKG ARTIFACT BUILD
 
 on:
   workflow_dispatch: {}
@@ -27,6 +27,7 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
+          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
           $json.dependencies += "qtbase"
@@ -38,16 +39,20 @@ jobs:
           $json.dependencies += "hidapi"
           $json.dependencies += "getopt"
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
+          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
 
       - name: Build All Dependencies
         working-directory: ./citron
         shell: bash
         run: |
+          # Bootstrap vcpkg
           ./externals/vcpkg/bootstrap-vcpkg.bat
           
+          # Create the custom triplet file
           cp ./externals/vcpkg/triplets/arm64-windows.cmake ./externals/vcpkg/triplets/custom-arm64-windows.cmake
-          echo 'set(VCPKG_ENV_PASSTROUGH "VULKAN_SDK")' >> ./externals/vcpkg/triplets/custom-arm64-windows.cmake
+          echo 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")' >> ./externals/vcpkg/triplets/custom-arm64-windows.cmake
           
+          # Run the install command. It will read the modified vcpkg.json.
           ./externals/vcpkg/vcpkg install --triplet=custom-arm64-windows
 
       - name: Package the Artifact
