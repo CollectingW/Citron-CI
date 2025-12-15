@@ -199,11 +199,10 @@ jobs:
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
             echo "Configuring for ARM64: Disabling ALL bundled dependencies and using custom ARM64 triplet."
-            # The custom triplet is included in the pre-compiled artifact, so we just need to use it.
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
               --debug-find \
               -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
-              -DCMAKE_TOOLCHAIN_FILE=./vcpkg_installed/scripts/buildsystems/vcpkg.cmake \
+              -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
               -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
