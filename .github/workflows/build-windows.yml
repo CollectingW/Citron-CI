@@ -36,7 +36,7 @@ jobs:
       - name: Check if release exists
         id: release_check
         run: |
-          if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2 wiser; then
+          if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
           else
             echo "exists=false" >> $GITHUB_OUTPUT
@@ -151,7 +151,7 @@ jobs:
           
           Write-Host "Vcpkg artifact successfully deployed."
 
-      - name: '[FIX] Re-create Custom Vcpkg Triplet to Satisfy Manifest Mode'
+      - name: Re-create Custom Vcpkg Triplet to Satisfy Manifest Mode
         if: matrix.arch == 'ARM64'
         working-directory: ./citron
         shell: pwsh
@@ -214,6 +214,7 @@ jobs:
               --debug-find \
               -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
               -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
+              -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
               -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
