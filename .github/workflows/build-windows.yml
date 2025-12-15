@@ -233,9 +233,10 @@ jobs:
           Write-Host "Destination directory: $destDir"
           Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
           Write-Host "Created qt.conf"
+          
           $requiredPlugins = @("imageformats", "platforms", "styles", "tls")
           foreach ($plugin in $requiredPlugins) {
-              $sourcePluginPath = Join-Path $sourceDir "plugins\$plugin"
+              $sourcePluginPath = Join-Path $sourceDir "Qt6\plugins\$plugin"
               if (Test-Path $sourcePluginPath) {
                   Copy-Item -Path $sourcePluginPath -Destination (Join-Path $destDir "plugins") -Recurse -Force
                   Write-Host "Copied plugin: $plugin"
@@ -243,7 +244,27 @@ jobs:
                   Write-Host "ERROR: Required plugin directory not found: $sourcePluginPath" -ForegroundColor Red; exit 1
               }
           }
-          $requiredDlls = @("avcodec*.dll", "avfilter*.dll", "avutil*.dll", "boost_context*.dll", "fmt.dll", "libcrypto-*.dll", "libssl-*.dll", "libwinpthread-*.dll", "lz4.dll", "OpenAL32.dll", "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "SDL2.dll", "swscale-*.dll", "zlib1.dll", "zstd.dll")
+
+          $requiredDlls = @(
+              "avcodec*.dll",
+              "avfilter*.dll",
+              "avutil*.dll",
+              "boost_context*.dll",
+              "fmt.dll",
+              "libcrypto-*.dll",
+              "libssl-*.dll",
+              "libwinpthread-*.dll",
+              "lz4.dll",
+              "OpenAL32.dll",
+              "Qt6Core.dll",
+              "Qt6Gui.dll",
+              "Qt6Network.dll",
+              "Qt6Widgets.dll",
+              "SDL2.dll",
+              "swscale-*.dll",
+              "zlib.dll",
+              "zstd.dll"
+          )
           foreach ($dllPattern in $requiredDlls) {
               $foundFile = Get-Item (Join-Path $sourceDir "bin\$dllPattern") -ErrorAction SilentlyContinue
               if ($foundFile) {
