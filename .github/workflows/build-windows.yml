@@ -95,13 +95,11 @@ jobs:
         shell: bash
         run: |
           for i in {1..5}; do
-          git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
             echo "Attempting to clone repository (Attempt $i of 5)..."
             if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
               echo "Clone successful."
               break
             fi
-            
             if [ "$i" -eq 5 ]; then
               echo "Failed to clone repository after 5 attempts."
               exit 1
@@ -115,10 +113,12 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
+          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
           $json.dependencies += "qtbase","qtmultimedia","openssl","libarchive","ffmpeg","sdl2","hidapi","getopt"
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
+          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
 
       - name: Re-create Custom Vcpkg Overlay Port
         if: matrix.arch == 'ARM64'
@@ -181,7 +181,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ./citron/vcpkg_installed
-          key: vcpkg-cache-arm64-v1-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
+          key: vcpkg-cache-arm64-v2-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
 
       - name: Bootstrap vcpkg and Install Dependencies
         if: matrix.arch == 'ARM64'
@@ -189,8 +189,6 @@ jobs:
         shell: bash
         run: |
           ./externals/vcpkg/bootstrap-vcpkg.bat -disableMetrics
-          # This command will be fast if the cache was restored.
-          # If not, it will build the dependencies and the cache step will save them for next time.
           ./externals/vcpkg/vcpkg install --triplet=custom-arm64-windows --overlay-ports=./my-vcpkg-ports
 
       - name: '[FIX] Apply All Necessary Source Patches'
