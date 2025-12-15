@@ -1,4 +1,61 @@
-build:
+name: Build Citron (Windows)
+
+concurrency:
+  group: build-windows-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-version:
+    name: Check if new version available
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      new_hash: ${{ steps.upstream.outputs.hash_short }}
+      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+      - name: Get upstream commit hash
+        id: upstream
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
+          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
+      - name: Get last built version
+        id: last_built
+        run: |
+          LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
+          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
+      - name: Check if release exists
+        id: release_check
+        run: |
+          if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
     name: "Citron Build (Windows - ${{ matrix.arch }})"
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
@@ -120,10 +177,11 @@ build:
           Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
 
       - name: Cache vcpkg dependencies
+        if: matrix.arch == 'ARM64'
         uses: actions/cache@v4
         with:
           path: ./citron/vcpkg_installed
-          key: vcpkg-cache-${{ matrix.arch }}-v2-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
+          key: vcpkg-cache-arm64-v2-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
 
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
