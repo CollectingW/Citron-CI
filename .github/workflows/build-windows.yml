@@ -151,68 +151,6 @@ jobs:
           
           Write-Host "Vcpkg artifact successfully deployed."
 
-      - name: Re-create Custom Vcpkg Overlay Port
-        if: matrix.arch == 'ARM64'
-        working-directory: ./citron
-        shell: bash
-        run: |
-          echo "Creating custom vcpkg port for Vulkan-Utility-Libraries to match artifact build environment..."
-          mkdir -p ./my-vcpkg-ports/vulkan-utility-libraries
-
-          cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/fix-toplevel-check.patch
-          --- a/CMakeLists.txt
-          +++ b/CMakeLists.txt
-          @@ -25,10 +25,7 @@
-           add_subdirectory(src)
-           add_subdirectory(include)
-           
-          -if (VUL_IS_TOP_LEVEL)
-          -    option(BUILD_TESTS "Build tests")
-          -    if (BUILD_TESTS)
-          +if (BUILD_TESTS)
-                   enable_testing()
-                   add_subdirectory(tests)
-               endif()
-          @@ -73,4 +70,3 @@
-           install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake
-               DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries
-           )
-          -endif()
-          EOF
-
-          cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/portfile.cmake
-          vcpkg_from_github(
-              OUT_SOURCE_PATH SOURCE_PATH
-              REPO KhronosGroup/Vulkan-Utility-Libraries
-              REF v1.3.290
-              SHA512 8c886e3f56e9c0c16b6771d9d43516ac3864a7536d525f0282479e0a05a065a0439fe75f4d1e2e920d36b85642d99d14a51e592ca07e86888c3fd45a19003504
-              HEAD_REF main
-              PATCHES
-                  fix-toplevel-check.patch
-          )
-          vcpkg_cmake_configure(
-              SOURCE_PATH "\${SOURCE_PATH}"
-              OPTIONS
-                  -DBUILD_TESTS=OFF
-          )
-          vcpkg_cmake_install()
-          vcpkg_cmake_config_fixup(PACKAGE_NAME "VulkanUtilityLibraries")
-          file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/include")
-          file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/share")
-          vcpkg_install_copyright(FILE_LIST "\${SOURCE_PATH}/LICENSE.txt")
-          EOF
-
-      - name: Re-create Custom Vcpkg Triplet to Satisfy Manifest Mode
-        if: matrix.arch == 'ARM64'
-        working-directory: ./citron
-        shell: pwsh
-        run: |
-          $tripletPath = ".\externals\vcpkg\triplets\arm64-windows.cmake"
-          $customTripletPath = ".\externals\vcpkg\triplets\custom-arm64-windows.cmake"
-          Copy-Item -Path $tripletPath -Destination $customTripletPath
-          Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
-          Write-Host "Custom triplet file created successfully to make the triplet valid for vcpkg."
-
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
@@ -262,16 +200,11 @@ jobs:
           VCPKG_DISABLE_COMPILER_TRACKING: 1
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
-            echo "Configuring for ARM64: Disabling ALL bundled dependencies and using custom ARM64 triplet."
+            echo "Configuring for ARM64: Using pre-compiled vcpkg artifact."
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
-              --debug-find \
-              -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
               -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
               -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
-              -DVCPKG_OVERLAY_PORTS=./my-vcpkg-ports \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
-              -DVCPKG_HOST_TRIPLET=custom-arm64-windows \
-              -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
               -DCITRON_USE_BUNDLED_SDL2=OFF \
