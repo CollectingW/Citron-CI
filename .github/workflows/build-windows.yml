@@ -203,6 +203,7 @@ jobs:
               --debug-find \
               -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
               -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
+              -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
               -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
