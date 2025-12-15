@@ -111,7 +111,7 @@ jobs:
       - name: Package the Artifact
         shell: pwsh
         run: |
-          Compress-Archive -Path ".\citron\externals\vcpkg\installed" -DestinationPath "vcpkg_installed_arm64.zip"
+          Compress-Archive -Path ".\citron\vcpkg_installed" -DestinationPath "vcpkg_installed_arm64.zip"
 
       - name: Upload the Artifact
         uses: actions/upload-artifact@v4
