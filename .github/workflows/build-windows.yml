@@ -134,13 +134,22 @@ jobs:
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
           Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
 
-      - name: Cache vcpkg dependencies
-        uses: actions/cache@v4
-        with:
-          path: citron/vcpkg_installed
-          key: ${{ runner.os }}-${{ matrix.arch }}-vcpkg-${{ hashFiles('citron/vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-vcpkg-
+      - name: Download and Extract Pre-compiled Vcpkg Artifact
+        if: matrix.arch == 'ARM64'
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          $url = "https://github.com/CollectingW/Citron-CI/releases/download/vcpkg/vcpkg_installed_arm64.zip"
+          $zipFile = "vcpkg_installed_arm64.zip"
+          $extractPath = "." 
+          
+          Write-Host "Downloading Vcpkg artifact from $url..."
+          Invoke-WebRequest -Uri $url -OutFile $zipFile
+          
+          Write-Host "Extracting Vcpkg artifact to $extractPath..."
+          Expand-Archive -Path $zipFile -DestinationPath $extractPath -Force
+          
+          Write-Host "Vcpkg artifact successfully deployed."
 
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
@@ -184,28 +193,18 @@ jobs:
           VERSION=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: '[FIX] Create Custom Vcpkg Triplet to Find Vulkan SDK'
-        if: matrix.arch == 'ARM64'
-        working-directory: ./citron
-        shell: pwsh
-        run: |
-          $tripletPath = ".\externals\vcpkg\triplets\arm64-windows.cmake"
-          $customTripletPath = ".\externals\vcpkg\triplets\custom-arm64-windows.cmake"
-          Copy-Item -Path $tripletPath -Destination $customTripletPath
-          Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
-          Write-Host "Custom triplet file created successfully with VULKAN_SDK passthrough."
-
       - name: Configure CMake
         working-directory: ./citron
         shell: bash
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
             echo "Configuring for ARM64: Disabling ALL bundled dependencies and using custom ARM64 triplet."
+            # The custom triplet is included in the pre-compiled artifact, so we just need to use it.
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
               --debug-find \
               -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
+              -DCMAKE_TOOLCHAIN_FILE=./vcpkg_installed/scripts/buildsystems/vcpkg.cmake \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
-              -DVCPKG_HOST_TRIPLET=custom-arm64-windows \
               -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
@@ -239,23 +238,24 @@ jobs:
         shell: cmd
         run: cmake --build build --config Release --parallel --verbose
 
-      - name: Deploy Qt Runtime for ARM64
+      - name: Manually Deploy Dependencies for ARM64
         if: matrix.arch == 'ARM64'
-        working-directory: ./citron
         shell: pwsh
         run: |
-          $windeployqt = ".\vcpkg_installed\custom-arm64-windows\tools\qt6\bin\windeployqt.exe"
-          $executable = ".\build\bin\Release\citron.exe"
+          $sourceDir = ".\citron\vcpkg_installed\custom-arm64-windows"
+          $destDir = ".\citron\build\bin\Release"
           
-          Write-Host "Looking for windeployqt at: $windeployqt"
-          if (-not (Test-Path $windeployqt)) {
-            Write-Host "##[error]FATAL: windeployqt.exe not found at the expected path for the custom triplet."
-            exit 1
-          }
+          Write-Host "Deploying dependencies from $sourceDir to $destDir"
           
-          Write-Host "Running windeployqt to gather Qt runtime dependencies..."
-          & $windeployqt --verbose 1 --no-translations --no-opengl-sw $executable
-          Write-Host "Qt deployment complete."
+          # Copy all required DLLs from the vcpkg bin directory
+          Write-Host "Copying DLLs..."
+          Copy-Item -Path "$sourceDir\bin\*.dll" -Destination $destDir -Force
+          
+          # Copy the entire plugins directory for Qt
+          Write-Host "Copying Qt plugins..."
+          Copy-Item -Path "$sourceDir\plugins" -Destination $destDir -Recurse -Force
+          
+          Write-Host "Dependency deployment complete."
 
       - name: Package Windows Build
         shell: pwsh
@@ -264,9 +264,8 @@ jobs:
           $pkg_dir = ".\citron\build\bin\Release"
           $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
           
-          $files_to_compress = Get-ChildItem -Path $pkg_dir -Recurse | Where-Object { $_.Extension -ne ".pdb" }
-          
-          Compress-Archive -Path $files_to_compress.FullName -DestinationPath $zip_file -Force
+          # Package the entire release directory, which now contains the executable and all dependencies
+          Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
 
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
