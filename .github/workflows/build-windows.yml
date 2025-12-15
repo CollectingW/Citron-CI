@@ -267,6 +267,7 @@ jobs:
               -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
               -DVCPKG_OVERLAY_PORTS=./my-vcpkg-ports \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
+              -DVCPKG_HOST_TRIPLET=custom-arm64-windows \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
               -DCITRON_USE_BUNDLED_SDL2=OFF \
