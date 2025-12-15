@@ -151,6 +151,17 @@ jobs:
           
           Write-Host "Vcpkg artifact successfully deployed."
 
+      - name: Re-create Custom Vcpkg Triplet
+        if: matrix.arch == 'ARM64'
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          $tripletPath = ".\externals\vcpkg\triplets\arm64-windows.cmake"
+          $customTripletPath = ".\externals\vcpkg\triplets\custom-arm64-windows.cmake"
+          Copy-Item -Path $tripletPath -Destination $customTripletPath
+          Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
+          Write-Host "Custom triplet file created successfully."
+
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
@@ -246,12 +257,8 @@ jobs:
           
           Write-Host "Deploying dependencies from $sourceDir to $destDir"
           
-          # Copy all required DLLs from the vcpkg bin directory
-          Write-Host "Copying DLLs..."
           Copy-Item -Path "$sourceDir\bin\*.dll" -Destination $destDir -Force
           
-          # Copy the entire plugins directory for Qt
-          Write-Host "Copying Qt plugins..."
           Copy-Item -Path "$sourceDir\plugins" -Destination $destDir -Recurse -Force
           
           Write-Host "Dependency deployment complete."
@@ -263,7 +270,6 @@ jobs:
           $pkg_dir = ".\citron\build\bin\Release"
           $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
           
-          # Package the entire release directory, which now contains the executable and all dependencies
           Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
 
       - name: Upload Windows Build
