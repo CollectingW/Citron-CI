@@ -207,6 +207,8 @@ jobs:
       - name: Configure CMake
         working-directory: ./citron
         shell: bash
+        env:
+          VCPKG_DISABLE_COMPILER_TRACKING: 1
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
             echo "Configuring for ARM64: Disabling ALL bundled dependencies and using custom ARM64 triplet."
