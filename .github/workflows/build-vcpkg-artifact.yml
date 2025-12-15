@@ -23,6 +23,22 @@ jobs:
       - name: Clone Citron Source
         run: git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
 
+      - name: Configure vcpkg.json with all required dependencies
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          $vcpkgJsonPath = "vcpkg.json"
+          $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
+          $json.dependencies += "qtbase"
+          $json.dependencies += "qtmultimedia"
+          $json.dependencies += "openssl"
+          $json.dependencies += "libarchive"
+          $json.dependencies += "ffmpeg"
+          $json.dependencies += "sdl2"
+          $json.dependencies += "hidapi"
+          $json.dependencies += "getopt"
+          $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
+
       - name: Build All Dependencies
         working-directory: ./citron
         shell: bash
@@ -30,9 +46,9 @@ jobs:
           ./externals/vcpkg/bootstrap-vcpkg.bat
           
           cp ./externals/vcpkg/triplets/arm64-windows.cmake ./externals/vcpkg/triplets/custom-arm64-windows.cmake
-          echo 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")' >> ./externals/vcpkg/triplets/custom-arm64-windows.cmake
+          echo 'set(VCPKG_ENV_PASSTROUGH "VULKAN_SDK")' >> ./externals/vcpkg/triplets/custom-arm64-windows.cmake
           
-          ./externals/vcpkg/vcpkg install qtbase qtmultimedia openssl libarchive ffmpeg sdl2 hidapi getopt --triplet=custom-arm64-windows
+          ./externals/vcpkg/vcpkg install --triplet=custom-arm64-windows
 
       - name: Package the Artifact
         shell: pwsh
