@@ -82,16 +82,12 @@ jobs:
         run: |
           $vulkan_sdk_version = "1.3.290.0"
           if ("${{ matrix.arch }}" -eq "ARM64") {
-            Write-Host "Downloading ARM64-specific Vulkan SDK..."
             $vulkan_sdk_url = "https://sdk.lunarg.com/sdk/download/$vulkan_sdk_version/warm/InstallVulkanARM64-$vulkan_sdk_version.exe"
           } else {
-            Write-Host "Downloading standard x64 Vulkan SDK..."
             $vulkan_sdk_url = "https://sdk.lunarg.com/sdk/download/$vulkan_sdk_version/windows/VulkanSDK-$vulkan_sdk_version-Installer.exe"
           }
-
           Invoke-WebRequest -Uri $vulkan_sdk_url -OutFile VulkanSDK-Installer.exe
           Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
-          
           echo "C:\VulkanSDK\$vulkan_sdk_version\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
           echo "VULKAN_SDK=C:\VulkanSDK\$vulkan_sdk_version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -99,6 +95,7 @@ jobs:
         shell: bash
         run: |
           for i in {1..5}; do
+          git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron
             echo "Attempting to clone repository (Attempt $i of 5)..."
             if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
               echo "Clone successful."
@@ -109,7 +106,6 @@ jobs:
               echo "Failed to clone repository after 5 attempts."
               exit 1
             fi
-
             echo "Clone failed. Retrying in 10 seconds..."
             sleep 10
           done
@@ -119,37 +115,10 @@ jobs:
         working-directory: ./citron
         shell: pwsh
         run: |
-          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
-          $json.dependencies += "qtbase"
-          $json.dependencies += "qtmultimedia"
-          $json.dependencies += "openssl"
-          $json.dependencies += "libarchive"
-          $json.dependencies += "ffmpeg"
-          $json.dependencies += "sdl2"
-          $json.dependencies += "hidapi"
-          $json.dependencies += "getopt"
-          
+          $json.dependencies += "qtbase","qtmultimedia","openssl","libarchive","ffmpeg","sdl2","hidapi","getopt"
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
-          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
-
-      - name: Download and Extract Pre-compiled Vcpkg Artifact
-        if: matrix.arch == 'ARM64'
-        working-directory: ./citron
-        shell: pwsh
-        run: |
-          $url = "https://github.com/CollectingW/Citron-CI/releases/download/vcpkg/vcpkg_installed_arm64.zip"
-          $zipFile = "vcpkg_installed_arm64.zip"
-          $extractPath = "." 
-          
-          Write-Host "Downloading Vcpkg artifact from $url..."
-          Invoke-WebRequest -Uri $url -OutFile $zipFile
-          
-          Write-Host "Extracting Vcpkg artifact to $extractPath..."
-          Expand-Archive -Path $zipFile -DestinationPath $extractPath -Force
-          
-          Write-Host "Vcpkg artifact successfully deployed."
 
       - name: Re-create Custom Vcpkg Overlay Port
         if: matrix.arch == 'ARM64'
@@ -157,15 +126,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p ./my-vcpkg-ports/vulkan-utility-libraries
-
           cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/fix-toplevel-check.patch
           --- a/CMakeLists.txt
           +++ b/CMakeLists.txt
           @@ -25,10 +25,7 @@
            add_subdirectory(src)
            add_subdirectory(include)
-           
-          -if (VUL_IS_TOP_LEVEL)
+           -if (VUL_IS_TOP_LEVEL)
           -    option(BUILD_TESTS "Build tests")
           -    if (BUILD_TESTS)
           +if (BUILD_TESTS)
@@ -178,7 +145,6 @@ jobs:
            )
           -endif()
           EOF
-
           cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/portfile.cmake
           vcpkg_from_github(
               OUT_SOURCE_PATH SOURCE_PATH
@@ -191,8 +157,7 @@ jobs:
           )
           vcpkg_cmake_configure(
               SOURCE_PATH "\${SOURCE_PATH}"
-              OPTIONS
-                  -DBUILD_TESTS=OFF
+              OPTIONS -DBUILD_TESTS=OFF
           )
           vcpkg_cmake_install()
           vcpkg_cmake_config_fixup(PACKAGE_NAME "VulkanUtilityLibraries")
@@ -210,20 +175,31 @@ jobs:
           $customTripletPath = ".\externals\vcpkg\triplets\custom-arm64-windows.cmake"
           Copy-Item -Path $tripletPath -Destination $customTripletPath
           Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
-          Write-Host "Custom triplet file created successfully."
+
+      - name: Cache vcpkg dependencies
+        if: matrix.arch == 'ARM64'
+        uses: actions/cache@v4
+        with:
+          path: ./citron/vcpkg_installed
+          key: vcpkg-cache-arm64-v1-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
+
+      - name: Bootstrap vcpkg and Install Dependencies
+        if: matrix.arch == 'ARM64'
+        working-directory: ./citron
+        shell: bash
+        run: |
+          ./externals/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          # This command will be fast if the cache was restored.
+          # If not, it will build the dependencies and the cache step will save them for next time.
+          ./externals/vcpkg/vcpkg install --triplet=custom-arm64-windows --overlay-ports=./my-vcpkg-ports
 
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
         shell: bash
         run: |
-          echo "Patching dynarmic for MSVC ARM64..."
           sed -i 's/#elif defined(ARCHITECTURE_arm64)/#elif defined(_MSC_VER) \&\& defined(ARCHITECTURE_arm64)\n                    _Memory_barrier();\n#elif defined(ARCHITECTURE_arm64)/g' src/core/arm/dynarmic/dynarmic_cp15.cpp
-          
-          echo "Patching src/citron/CMakeLists.txt to respect build flags..."
           sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)\n    copy_citron_SDL_deps(citron)\nendif()\n\nif (MSVC AND CITRON_USE_BUNDLED_FFMPEG)/' src/citron/CMakeLists.txt
-          
-          echo "Patching src/citron_cmd/CMakeLists.txt to disable bundled SDL copy..."
           perl -0777 -i -pe 's/if \(MSVC\)\n    include\(CopyCitronSDLDeps\)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)/g' src/citron_cmd/CMakeLists.txt
 
       - name: '[FIX] Patch CMakeLists for ARM64 MSVC Linker Circular Dependencies'
@@ -231,19 +207,13 @@ jobs:
         working-directory: citron
         shell: bash
         run: |
-          echo "Patching src/citron/CMakeLists.txt to resolve ARM64 linker circular dependencies..."
-
           ORIGINAL_BLOCK="else()
           target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core)
           endif()"
-
           PATCHED_BLOCK="else()
           target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core common core input_common frontend_common network video_core)
           endif()"
-
           perl -i -p0e "s/\Q$ORIGINAL_BLOCK\E/$PATCHED_BLOCK/" src/citron/CMakeLists.txt
-          
-          echo "Patch applied successfully."
           
       - name: Get Nightly Version
         id: version
@@ -257,17 +227,13 @@ jobs:
       - name: Configure CMake
         working-directory: ./citron
         shell: bash
-        env:
-          VCPKG_DISABLE_COMPILER_TRACKING: 1
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
-            echo "Configuring for ARM64: Using pre-compiled vcpkg artifact."
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
               -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
-              -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
-              -DVCPKG_OVERLAY_PORTS=./my-vcpkg-ports \
               -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
               -DVCPKG_HOST_TRIPLET=custom-arm64-windows \
+              -DVCPKG_OVERLAY_PORTS=./my-vcpkg-ports \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
               -DCITRON_USE_BUNDLED_SDL2=OFF \
@@ -281,7 +247,6 @@ jobs:
               -DENABLE_OPENSSL=ON \
               -DENABLE_WEB_SERVICE=ON
           else
-            echo "Configuring for x64 with default settings."
             cmake -B build -S . -G "Visual Studio 17 2022" -A x64 \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_BUILD_TYPE=Nightly \
@@ -306,22 +271,15 @@ jobs:
         run: |
           $sourceDir = ".\citron\vcpkg_installed\custom-arm64-windows"
           $destDir = ".\citron\build\bin\Release"
-          
-          Write-Host "Deploying dependencies from $sourceDir to $destDir"
-          
           Copy-Item -Path "$sourceDir\bin\*.dll" -Destination $destDir -Force
-          
           Copy-Item -Path "$sourceDir\plugins" -Destination $destDir -Recurse -Force
           
-          Write-Host "Dependency deployment complete."
-
       - name: Package Windows Build
         shell: pwsh
         run: |
           mkdir dist
           $pkg_dir = ".\citron\build\bin\Release"
           $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-${{ matrix.arch }}.zip"
-          
           Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
 
       - name: Upload Windows Build
@@ -370,9 +328,7 @@ jobs:
           files: "*.zip"
           body: |
             **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
-
             This build is based on the latest Citron emulator source code from the upstream repository.
-
             **Build Details:**
             - Platform: Windows (x64 & ARM64)
             - Build Type: Release with Qt6
