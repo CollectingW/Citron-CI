@@ -44,6 +44,8 @@ jobs:
       - name: Build All Dependencies
         working-directory: ./citron
         shell: bash
+        env:
+          VCPKG_DEFAULT_HOST_TRIPLET: custom-arm64-windows
         run: |
           # Bootstrap vcpkg
           ./externals/vcpkg/bootstrap-vcpkg.bat
@@ -52,7 +54,7 @@ jobs:
           cp ./externals/vcpkg/triplets/arm64-windows.cmake ./externals/vcpkg/triplets/custom-arm64-windows.cmake
           echo 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")' >> ./externals/vcpkg/triplets/custom-arm64-windows.cmake
           
-          # Run the install command. It will read the modified vcpkg.json.
+          # Run the install command.
           ./externals/vcpkg/vcpkg install --triplet=custom-arm64-windows
 
       - name: Package the Artifact
