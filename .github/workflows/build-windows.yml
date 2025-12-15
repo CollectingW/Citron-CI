@@ -151,6 +151,14 @@ jobs:
           
           Write-Host "Vcpkg artifact successfully deployed."
 
+      - name: '[FIX] Rename Artifact Directory to Standard Triplet Name'
+        if: matrix.arch == 'ARM64'
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          Move-Item -Path ".\vcpkg_installed\custom-arm64-windows" -Destination ".\vcpkg_installed\arm64-windows"
+          Write-Host "Renamed pre-compiled directory to match standard triplet."
+
       - name: '[FIX] Apply All Necessary Source Patches'
         if: matrix.arch == 'ARM64'
         working-directory: citron
@@ -198,13 +206,13 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ matrix.arch }}" == "ARM64" ]]; then
-            echo "Configuring for ARM64: Disabling ALL bundled dependencies and using custom ARM64 triplet."
+            echo "Configuring for ARM64: Disabling ALL bundled dependencies and using standard ARM64 triplet."
             cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
               --debug-find \
               -DVulkanHeaders_DIR=$VULKAN_SDK/share/vulkan/cmake \
               -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
               -DVCPKG_INSTALLED_DIR=./vcpkg_installed \
-              -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
+              -DVCPKG_TARGET_TRIPLET=arm64-windows \
               -DCITRON_ENABLE_PORTABLE=OFF \
               -DCITRON_USE_BUNDLED_VCPKG=ON \
               -DCITRON_USE_BUNDLED_FFMPEG=OFF \
@@ -242,7 +250,7 @@ jobs:
         if: matrix.arch == 'ARM64'
         shell: pwsh
         run: |
-          $sourceDir = ".\citron\vcpkg_installed\custom-arm64-windows"
+          $sourceDir = ".\citron\vcpkg_installed\arm64-windows"
           $destDir = ".\citron\build\bin\Release"
           
           Write-Host "Deploying dependencies from $sourceDir to $destDir"
