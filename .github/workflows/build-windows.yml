@@ -312,6 +312,14 @@ jobs:
               }
           }
           Write-Host "Dependency deployment complete."
+
+      - name: Remove PDB Symbols
+        shell: pwsh
+        run: |
+          $packageDir = ".\citron\build\bin\Release"
+          Write-Host "Removing PDB files from $packageDir to reduce package size..."
+          Remove-Item -Path (Join-Path $packageDir "*.pdb") -Force -ErrorAction SilentlyContinue
+          Write-Host "PDB files removed."
           
       - name: Package Windows Build
         shell: pwsh
