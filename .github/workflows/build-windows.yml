@@ -165,7 +165,7 @@ jobs:
       - name: Cache vcpkg dependencies
         uses: actions/cache@v4
         with:
-          path: ./citron/vcpkg_installed
+          path: ./citron/build/vcpkg_installed
           key: vcpkg-cache-arm64-v2-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
 
       - name: '[FIX] Apply All Necessary Source Patches'
@@ -227,7 +227,7 @@ jobs:
       - name: Manually Deploy Dependencies
         shell: pwsh
         run: |
-          $searchRoot = ".\citron\vcpkg_installed\custom-arm64-windows"
+          $searchRoot = ".\citron\build\vcpkg_installed\custom-arm64-windows"
           $destDir = ".\citron\build\bin\Release"
           $pluginsDestDir = Join-Path $destDir "plugins"
           
@@ -245,7 +245,6 @@ jobs:
               "tls"          = @("qcertonlybackend.dll", "qopensslbackend.dll", "qschannelbackend.dll")
           }
 
-          # Create the critical qt.conf file
           Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
           Write-Host "Destination folders and qt.conf created."
 
@@ -281,9 +280,7 @@ jobs:
         run: |
           $packageDir = ".\citron\build\bin\Release"
           Write-Host "Removing PDB files from $packageDir to reduce package size..."
-          # Remove PDBs from the main directory
           Remove-Item -Path (Join-Path $packageDir "*.pdb") -Force -ErrorAction SilentlyContinue
-          # Remove PDBs from the plugins subdirectories
           Remove-Item -Path (Join-Path $packageDir "plugins\*\*.pdb") -Force -ErrorAction SilentlyContinue
           Write-Host "PDB files removed."
           
