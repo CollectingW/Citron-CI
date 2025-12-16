@@ -65,8 +65,6 @@ jobs:
         include:
           - os: windows-latest
             arch: x64
-          # - os: windows-11-arm
-          #   arch: ARM64
     timeout-minutes: 120
 
     steps:
@@ -98,6 +96,18 @@ jobs:
             echo "Clone failed. Retrying in 10 seconds..."
             sleep 10
           done
+
+      - name: Cache vcpkg and Qt dependencies
+        uses: actions/cache@v4
+        id: cache-vcpkg
+        with:
+          # The path contains both the vcpkg installed libs and the downloaded Qt binaries
+          path: ./citron/build
+          # The key invalidates the cache if the OS, architecture, or vcpkg dependency list changes
+          key: vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-
+
       - name: Get Nightly Version
         id: version
         working-directory: ./citron
@@ -106,29 +116,6 @@ jobs:
           git fetch --tags
           VERSION=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-
-      # - name: Patch Incompatible Dynarmic Source for MSVC
-      #   if: matrix.arch == 'ARM64'
-      #   working-directory: ./citron/src/core/arm/dynarmic
-      #   shell: bash
-      #   run: |
-      #     # The code in dynarmic_cp15.cpp uses GCC/Clang inline assembly which MSVC cannot compile.
-      #     # Wrap the entire file in a check that excludes it when compiling with MSVC.
-      #     # This will allow the project to link but the JIT for this specific part will not be functional.
-      #     # This is a necessary step to get a successful build on Windows ARM64.
-      #     
-      #     # Read the original file content
-      #     ORIGINAL_CONTENT=$(cat dynarmic_cp15.cpp)
-      #     
-      #     # Overwrite the file with the wrapped content
-      #     echo "#if !defined(_MSC_VER)" > dynarmic_cp15.cpp
-      #     echo "$ORIGINAL_CONTENT" >> dynarmic_cp15.cpp
-      #     echo "#endif // !defined(_MSC_VER)" >> dynarmic_cp15.cpp
-
-      - name: Force Clean Build by Removing Old Cache
-        working-directory: ./citron
-        shell: bash
-        run: rm -rf build
 
       - name: Configure CMake
         working-directory: ./citron
@@ -184,10 +171,6 @@ jobs:
         with:
           name: Citron-Windows-Nightly-x64
           path: .
-      # - uses: actions/download-artifact@v4
-      #   with:
-      #     name: Citron-Windows-Nightly-ARM64
-      #     path: .
       - name: Get Version from Filename
         shell: bash
         run: |
