@@ -1,0 +1,381 @@
+name: Build Citron (Windows ARM64)
+
+concurrency:
+  group: build-windows-nightly-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check-version:
+    name: Check if new version available
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      new_hash: ${{ steps.upstream.outputs.hash_short }}
+      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+      - name: Get upstream commit hash
+        id: upstream
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
+          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
+          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
+          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
+      - name: Get last built version
+        id: last_built
+        run: |
+          LAST_HASH=$(cat LATEST_VERSION_ARM64 | tr -d '\n' || echo "none")
+          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
+      - name: Check if release exists
+        id: release_check
+        run: |
+          if gh release view nightly-windows-arm64 --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+      - name: Compare versions
+        id: compare
+        run: |
+          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    name: "Citron Build (Windows - ARM64)"
+    needs: [check-version]
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: windows-11-arm
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          $vulkan_sdk_version = "1.3.290.0"
+          $vulkan_sdk_url = "https://sdk.lunarg.com/sdk/download/$vulkan_sdk_version/warm/InstallVulkanARM64-$vulkan_sdk_version.exe"
+          Invoke-WebRequest -Uri $vulkan_sdk_url -OutFile VulkanSDK-Installer.exe
+          Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
+          echo "C:\VulkanSDK\$vulkan_sdk_version\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          echo "VULKAN_SDK=C:\VulkanSDK\$vulkan_sdk_version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Clone Citron Source
+        shell: bash
+        run: |
+          for i in {1..5}; do
+            echo "Attempting to clone repository (Attempt $i of 5)..."
+            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
+              echo "Clone successful."
+              break
+            fi
+            if [ "$i" -eq 5 ]; then
+              echo "Failed to clone repository after 5 attempts."
+              exit 1
+            fi
+            echo "Clone failed. Retrying in 10 seconds..."
+            sleep 10
+          done
+
+      - name: Configure vcpkg for ARM64
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
+          $vcpkgJsonPath = "vcpkg.json"
+          $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
+          $json.dependencies += "openssl","libarchive","ffmpeg","sdl2","hidapi","getopt"
+          $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
+          Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
+
+      - name: Re-create Custom Vcpkg Overlay Port
+        working-directory: ./citron
+        shell: bash
+        run: |
+          mkdir -p ./my-vcpkg-ports/vulkan-utility-libraries
+          cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/fix-toplevel-check.patch
+          --- a/CMakeLists.txt
+          +++ b/CMakeLists.txt
+          @@ -25,10 +25,7 @@
+           add_subdirectory(src)
+           add_subdirectory(include)
+           -if (VUL_IS_TOP_LEVEL)
+          -    option(BUILD_TESTS "Build tests")
+          -    if (BUILD_TESTS)
+          +if (BUILD_TESTS)
+                   enable_testing()
+                   add_subdirectory(tests)
+               endif()
+          @@ -73,4 +70,3 @@
+           install(FILES ${CMAKE_CURRENT_BINARY_DIR}/VulkanUtilityLibrariesConfig.cmake
+               DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VulkanUtilityLibraries
+           )
+          -endif()
+          EOF
+          cat << 'EOF' > ./my-vcpkg-ports/vulkan-utility-libraries/portfile.cmake
+          vcpkg_from_github(
+              OUT_SOURCE_PATH SOURCE_PATH
+              REPO KhronosGroup/Vulkan-Utility-Libraries
+              REF v1.3.290
+              SHA512 8c886e3f56e9c0c16b6771d9d43516ac3864a7536d525f0282479e0a05a065a0439fe75f4d1e2e920d36b85642d99d14a51e592ca07e86888c3fd45a19003504
+              HEAD_REF main
+              PATCHES
+                  fix-toplevel-check.patch
+          )
+          vcpkg_cmake_configure(
+              SOURCE_PATH "${SOURCE_PATH}"
+              OPTIONS -DBUILD_TESTS=OFF
+          )
+          vcpkg_cmake_install()
+          vcpkg_cmake_config_fixup(PACKAGE_NAME "VulkanUtilityLibraries")
+          file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+          file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+          vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")
+          EOF
+
+      - name: Re-create Custom Vcpkg Triplet
+        working-directory: ./citron
+        shell: pwsh
+        run: |
+          $tripletPath = ".\externals\vcpkg\triplets\arm64-windows.cmake"
+          $customTripletPath = ".\externals\vcpkg\triplets\custom-arm64-windows.cmake"
+          Copy-Item -Path $tripletPath -Destination $customTripletPath
+          Add-Content -Path $customTripletPath -Value 'set(VCPKG_ENV_PASSTHROUGH "VULKAN_SDK")'
+
+      - name: Cache vcpkg dependencies
+        uses: actions/cache@v4
+        with:
+          path: ./citron/build/vcpkg_installed
+          key: vcpkg-cache-arm64-v2-${{ hashFiles('**/vcpkg.json', '**/portfile.cmake', '**/fix-toplevel-check.patch') }}
+
+      - name: '[FIX] Apply All Necessary Source Patches'
+        working-directory: citron
+        shell: bash
+        run: |
+          sed -i 's/#elif defined(ARCHITECTURE_arm64)/#elif defined(_MSC_VER) \&\& defined(ARCHITECTURE_arm64)\n                    _Memory_barrier();\n#elif defined(ARCHITECTURE_arm64)/g' src/core/arm/dynarmic/dynarmic_cp15.cpp
+          sed -i 's/if (MSVC)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)\n    copy_citron_SDL_deps(citron)\nendif()\n\nif (MSVC AND CITRON_USE_BUNDLED_FFMPEG)/' src/citron/CMakeLists.txt
+          perl -0777 -i -pe 's/if \(MSVC\)\n    include\(CopyCitronSDLDeps\)/if (MSVC AND CITRON_USE_BUNDLED_SDL2)\n    include(CopyCitronSDLDeps)/g' src/citron_cmd/CMakeLists.txt
+
+      - name: '[FIX] Patch CMakeLists for ARM64 MSVC Linker Circular Dependencies'
+        working-directory: citron
+        shell: bash
+        run: |
+          ORIGINAL_BLOCK="else()
+          target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core)
+          endif()"
+          PATCHED_BLOCK="else()
+          target_link_libraries(citron PRIVATE common core input_common frontend_common network video_core common core input_common frontend_common network video_core)
+          endif()"
+          perl -i -p0e "s/\Q$ORIGINAL_BLOCK\E/$PATCHED_BLOCK/" src/citron/CMakeLists.txt
+          
+      - name: Get Nightly Version
+        id: version
+        working-directory: ./citron
+        shell: bash
+        run: |
+          git fetch --tags
+          VERSION=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Configure CMake
+        working-directory: ./citron
+        shell: bash
+        run: |
+          cmake -B build -S . -G "Visual Studio 17 2022" -A ARM64 \
+            -DCMAKE_TOOLCHAIN_FILE=./externals/vcpkg/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_TARGET_TRIPLET=custom-arm64-windows \
+            -DVCPKG_HOST_TRIPLET=custom-arm64-windows \
+            -DVCPKG_OVERLAY_PORTS=./my-vcpkg-ports \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=OFF \
+            -DCITRON_USE_BUNDLED_SDL2=OFF \
+            -DCITRON_USE_BUNDLED_HIDAPI=OFF \
+            -DCITRON_BUILD_TYPE=Nightly \
+            -DCITRON_ENABLE_LTO=OFF \
+            -DCITRON_USE_BUNDLED_QT=OFF \
+            -DCITRON_TESTS=OFF \
+            -DUSE_DISCORD_PRESENCE=OFF \
+            -DCITRON_USE_AUTO_UPDATER=ON \
+            -DENABLE_OPENSSL=ON \
+            -DENABLE_WEB_SERVICE=ON
+
+      - name: Build Citron
+        working-directory: ./citron
+        shell: cmd
+        run: cmake --build build --config Release --parallel --verbose
+
+      - name: Manually Deploy Dependencies
+        shell: pwsh
+        run: |
+
+          # 1. Define all possible locations where dependencies might be.
+          $vcpkgSearchRoot = ".\citron\build\vcpkg_installed\custom-arm64-windows"
+          $qtDownloadRoot = ".\citron\build\externals\qt"
+          
+          # 2. Create a dynamic list of every directory to search.
+          # It starts with the guaranteed vcpkg path.
+          $searchPaths = @($vcpkgSearchRoot)
+          
+          # Then, IF the Qt download folder exists, add its ARM64 bin and plugin paths to the list.
+          # This will NOT fail if the folder is missing.
+          if (Test-Path $qtDownloadRoot) {
+              $searchPaths += Get-ChildItem -Path $qtDownloadRoot -Recurse -Directory -Filter "msvc*_arm64" | ForEach-Object { $_.FullName }
+          }
+          
+          Write-Host "Starting brute-force dependency search in the following locations:"
+          $searchPaths | ForEach-Object { Write-Host "- $_" }
+
+          # 3. Define all required files.
+          $destDir = ".\citron\build\bin\Release"
+          $pluginsDestDir = Join-Path $destDir "plugins"
+          
+          $requiredDlls = @(
+              "avcodec*.dll", "avfilter*.dll", "avutil*.dll", "boost_context*.dll", "fmt.dll", 
+              "libcrypto-*.dll", "libssl-*.dll", "lz4.dll", "OpenAL32.dll", 
+              "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "Qt6Multimedia.dll", "SDL2.dll", 
+              "swscale-*.dll", "zlib1.dll", "zstd.dll"
+          )
+
+          $pluginManifest = @{
+              "imageformats" = @("qgif.dll", "qico.dll", "qjpeg.dll");
+              "platforms"    = @("qwindows.dll", "qminimal.dll", "qdirect2d.dll", "qoffscreen.dll");
+              "styles"       = @("qmodernwindowsstyle.dll");
+              "tls"          = @("qcertonlybackend.dll", "qopensslbackend.dll", "qschannelbackend.dll")
+          }
+
+          Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
+          Write-Host "Destination folders and qt.conf created."
+
+          Write-Host "Starting search for required main DLLs..."
+          foreach ($dllPattern in $requiredDlls) {
+              # Get-ChildItem searches ALL paths in the $searchPaths array.
+              $foundFile = Get-ChildItem -Path $searchPaths -Recurse -Filter $dllPattern -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($foundFile) {
+                  Copy-Item -Path $foundFile.FullName -Destination $destDir -Force
+              } else {
+                  Write-Host "WARNING: Could not find required file '$dllPattern'." -ForegroundColor Yellow
+              }
+          }
+
+          Write-Host "Starting search for required plugin DLLs..."
+          foreach ($folderName in $pluginManifest.Keys) {
+              $finalPluginSubDir = Join-Path $pluginsDestDir $folderName
+              New-Item -ItemType Directory -Path $finalPluginSubDir -Force
+              
+              foreach ($pluginDll in $pluginManifest[$folderName]) {
+                  $foundPluginFile = Get-ChildItem -Path $searchPaths -Recurse -Filter $pluginDll -ErrorAction SilentlyContinue | Select-Object -First 1
+                  if ($foundPluginFile) {
+                      Copy-Item -Path $foundPluginFile.FullName -Destination $finalPluginSubDir -Force
+                  } else {
+                      Write-Host "WARNING: Could not find required plugin '$pluginDll' for folder '$folderName'." -ForegroundColor Yellow
+                  }
+              }
+          }
+
+          Write-Host "SUCCESS: Dependency deployment finished. Check warnings for any missing files." -ForegroundColor Cyan
+
+      - name: Remove PDB Symbols
+        shell: pwsh
+        run: |
+          $packageDir = ".\citron\build\bin\Release"
+          Write-Host "Removing PDB files from $packageDir to reduce package size..."
+          Remove-Item -Path (Join-Path $packageDir "*.pdb") -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path (Join-Path $packageDir "plugins\*\*.pdb") -Force -ErrorAction SilentlyContinue
+          Write-Host "PDB files removed."
+          
+      - name: Package Windows Build
+        id: package
+        shell: pwsh
+        run: |
+          $pkg_dir = ".\citron\build\bin\Release"
+          if (-not (Test-Path $pkg_dir) -or -not (Get-ChildItem -Path $pkg_dir)) {
+              Write-Error "Build directory '$pkg_dir' is empty or does not exist. Aborting packaging."
+              exit 1
+          }
+          New-Item -ItemType Directory -Path ".\dist" -Force
+          $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-ARM64.zip"
+          Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
+          # Correct PowerShell syntax to set the GitHub Actions output
+          echo "zip_name=$zip_file" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Successfully packaged build to $zip_file"
+
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Citron-Windows-Nightly-ARM64
+          path: ${{ steps.package.outputs.zip_name }}
+          if-no-files-found: warn
+  
+  release:
+    if: ${{ github.ref_name == 'main' }}
+    name: "Release ARM64"
+    needs: [check-version, build]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Download ARM64 Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Citron-Windows-Nightly-ARM64
+          path: .
+      - name: Get Version from Filename
+        shell: bash
+        run: |
+          FILENAME=$(ls Citron-windows-nightly-*-ARM64.zip)
+          VERSION=${FILENAME#Citron-windows-nightly-}
+          VERSION=${VERSION%-ARM64.zip}
+          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
+      - name: Delete Previous Release
+        run: gh release delete "nightly-windows-arm64" --repo "${{ github.repository }}" --cleanup-tag -y || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set Build Date
+        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+      - name: Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Continuous Build (Windows ARM64 Nightly: ${{ env.APP_VERSION }})"
+          tag_name: "nightly-windows-arm64"
+          prerelease: true
+          files: "*.zip"
+          body: |
+            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
+            This build is based on the latest Citron emulator source code from the upstream repository.
+            **Build Details:**
+            - Platform: Windows (ARM64)
+            - Build Type: Release with Qt6
+            - Date: ${{ env.BUILD_DATE }}
+      - name: Update LATEST_VERSION
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "${{ env.APP_VERSION }}" > LATEST_VERSION_ARM64
+          git add LATEST_VERSION_ARM64
+          git commit -m "Update LATEST_VERSION_ARM64 to ${{ env.APP_VERSION }} [skip ci]" || exit 0
+          for i in {1..5}; do
+            git pull --rebase origin main && git push && break || sleep 2
+          done
