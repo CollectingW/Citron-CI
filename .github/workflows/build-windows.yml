@@ -104,7 +104,7 @@ jobs:
           Write-Host "Forcing ARM64 build to use vcpkg for ALL dependencies..."
           $vcpkgJsonPath = "vcpkg.json"
           $json = Get-Content $vcpkgJsonPath -Raw | ConvertFrom-Json
-          $json.dependencies += "qtbase","qtmultimedia","openssl","libarchive","ffmpeg","sdl2","hidapi","getopt"
+          $json.dependencies += "openssl","libarchive","ffmpeg","sdl2","hidapi","getopt"
           $json | ConvertTo-Json -Depth 10 | Set-Content $vcpkgJsonPath
           Write-Host "SUCCESS: Correctly patched vcpkg.json to build all required dependencies."
 
@@ -227,14 +227,32 @@ jobs:
       - name: Manually Deploy Dependencies
         shell: pwsh
         run: |
-          $searchRoot = ".\citron\build\vcpkg_installed\custom-arm64-windows"
+
+          # 1. Define all possible locations where dependencies might be.
+          $vcpkgSearchRoot = ".\citron\build\vcpkg_installed\custom-arm64-windows"
+          $qtDownloadRoot = ".\citron\build\externals\qt"
+          
+          # 2. Create a dynamic list of every directory to search.
+          # It starts with the guaranteed vcpkg path.
+          $searchPaths = @($vcpkgSearchRoot)
+          
+          # Then, IF the Qt download folder exists, add its ARM64 bin and plugin paths to the list.
+          # This will NOT fail if the folder is missing.
+          if (Test-Path $qtDownloadRoot) {
+              $searchPaths += Get-ChildItem -Path $qtDownloadRoot -Recurse -Directory -Filter "msvc*_arm64" | ForEach-Object { $_.FullName }
+          }
+          
+          Write-Host "Starting brute-force dependency search in the following locations:"
+          $searchPaths | ForEach-Object { Write-Host "- $_" }
+
+          # 3. Define all required files.
           $destDir = ".\citron\build\bin\Release"
           $pluginsDestDir = Join-Path $destDir "plugins"
           
           $requiredDlls = @(
               "avcodec*.dll", "avfilter*.dll", "avutil*.dll", "boost_context*.dll", "fmt.dll", 
               "libcrypto-*.dll", "libssl-*.dll", "lz4.dll", "OpenAL32.dll", 
-              "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "SDL2.dll", 
+              "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "Qt6Multimedia.dll", "SDL2.dll", 
               "swscale-*.dll", "zlib1.dll", "zstd.dll"
           )
 
@@ -248,9 +266,10 @@ jobs:
           Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
           Write-Host "Destination folders and qt.conf created."
 
-          Write-Host "Starting brute-force search for required main DLLs..."
+          Write-Host "Starting search for required main DLLs..."
           foreach ($dllPattern in $requiredDlls) {
-              $foundFile = Get-ChildItem -Path $searchRoot -Recurse -Filter $dllPattern | Select-Object -First 1
+              # Get-ChildItem searches ALL paths in the $searchPaths array.
+              $foundFile = Get-ChildItem -Path $searchPaths -Recurse -Filter $dllPattern -ErrorAction SilentlyContinue | Select-Object -First 1
               if ($foundFile) {
                   Copy-Item -Path $foundFile.FullName -Destination $destDir -Force
               } else {
@@ -258,13 +277,13 @@ jobs:
               }
           }
 
-          Write-Host "Starting brute-force search for required plugin DLLs..."
+          Write-Host "Starting search for required plugin DLLs..."
           foreach ($folderName in $pluginManifest.Keys) {
               $finalPluginSubDir = Join-Path $pluginsDestDir $folderName
               New-Item -ItemType Directory -Path $finalPluginSubDir -Force
               
               foreach ($pluginDll in $pluginManifest[$folderName]) {
-                  $foundPluginFile = Get-ChildItem -Path $searchRoot -Recurse -Filter $pluginDll | Select-Object -First 1
+                  $foundPluginFile = Get-ChildItem -Path $searchPaths -Recurse -Filter $pluginDll -ErrorAction SilentlyContinue | Select-Object -First 1
                   if ($foundPluginFile) {
                       Copy-Item -Path $foundPluginFile.FullName -Destination $finalPluginSubDir -Force
                   } else {
