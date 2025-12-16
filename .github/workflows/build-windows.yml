@@ -143,14 +143,14 @@ jobs:
                   fix-toplevel-check.patch
           )
           vcpkg_cmake_configure(
-              SOURCE_PATH "\${SOURCE_PATH}"
+              SOURCE_PATH "${SOURCE_PATH}"
               OPTIONS -DBUILD_TESTS=OFF
           )
           vcpkg_cmake_install()
           vcpkg_cmake_config_fixup(PACKAGE_NAME "VulkanUtilityLibraries")
-          file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/include")
-          file(REMOVE_RECURSE "\${CURRENT_PACKAGES_DIR}/debug/share")
-          vcpkg_install_copyright(FILE_LIST "\${SOURCE_PATH}/LICENSE.txt")
+          file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+          file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
+          vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE.txt")
           EOF
 
       - name: Re-create Custom Vcpkg Triplet
@@ -233,9 +233,9 @@ jobs:
           
           $requiredDlls = @(
               "avcodec*.dll", "avfilter*.dll", "avutil*.dll", "boost_context*.dll", "fmt.dll", 
-              "libcrypto-*.dll", "libssl-*.dll", "libwinpthread-*.dll", "lz4.dll", "OpenAL32.dll", 
+              "libcrypto-*.dll", "libssl-*.dll", "lz4.dll", "OpenAL32.dll", 
               "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "SDL2.dll", 
-              "swscale-*.dll", "zlib.dll", "zstd.dll"
+              "swscale-*.dll", "zlib1.dll", "zstd.dll"
           )
 
           $pluginManifest = @{
@@ -288,17 +288,24 @@ jobs:
         id: package
         shell: pwsh
         run: |
-          mkdir dist
           $pkg_dir = ".\citron\build\bin\Release"
+          if (-not (Test-Path $pkg_dir) -or -not (Get-ChildItem -Path $pkg_dir)) {
+              Write-Error "Build directory '$pkg_dir' is empty or does not exist. Aborting packaging."
+              exit 1
+          }
+          New-Item -ItemType Directory -Path ".\dist" -Force
           $zip_file = ".\dist\Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-ARM64.zip"
           Compress-Archive -Path "$pkg_dir\*" -DestinationPath $zip_file -Force
-          echo "zip_name=$zip_file" >> $GITHUB_OUTPUT
+          # Correct PowerShell syntax to set the GitHub Actions output
+          echo "zip_name=$zip_file" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Successfully packaged build to $zip_file"
 
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
         with:
           name: Citron-Windows-Nightly-ARM64
-          path: "${{ steps.package.outputs.zip_name }}"
+          path: ${{ steps.package.outputs.zip_name }}
+          if-no-files-found: warn
   
   release:
     if: ${{ github.ref_name == 'main' }}
