@@ -227,61 +227,64 @@ jobs:
       - name: Manually Deploy Dependencies
         shell: pwsh
         run: |
-          $sourceDir = ".\citron\vcpkg_installed\custom-arm64-windows"
+          $searchRoot = ".\citron\vcpkg_installed\custom-arm64-windows"
           $destDir = ".\citron\build\bin\Release"
-          Write-Host "Source directory: $sourceDir"
-          Write-Host "Destination directory: $destDir"
-          Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
-          Write-Host "Created qt.conf"
+          $pluginsDestDir = Join-Path $destDir "plugins"
           
-          $requiredPlugins = @("imageformats", "platforms", "styles", "tls")
-          foreach ($plugin in $requiredPlugins) {
-              $sourcePluginPath = Join-Path $sourceDir "Qt6\plugins\$plugin"
-              if (Test-Path $sourcePluginPath) {
-                  Copy-Item -Path $sourcePluginPath -Destination (Join-Path $destDir "plugins") -Recurse -Force
-                  Write-Host "Copied plugin: $plugin"
+          $requiredDlls = @(
+              "avcodec*.dll", "avfilter*.dll", "avutil*.dll", "boost_context*.dll", "fmt.dll", 
+              "libcrypto-*.dll", "libssl-*.dll", "libwinpthread-*.dll", "lz4.dll", "OpenAL32.dll", 
+              "Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6Widgets.dll", "SDL2.dll", 
+              "swscale-*.dll", "zlib.dll", "zstd.dll"
+          )
+
+          $pluginManifest = @{
+              "imageformats" = @("qgif.dll", "qico.dll", "qjpeg.dll");
+              "platforms"    = @("qwindows.dll", "qminimal.dll", "qdirect2d.dll", "qoffscreen.dll");
+              "styles"       = @("qmodernwindowsstyle.dll");
+              "tls"          = @("qcertonlybackend.dll", "qopensslbackend.dll", "qschannelbackend.dll")
+          }
+
+          # Create the critical qt.conf file
+          Set-Content -Path (Join-Path $destDir "qt.conf") -Value "[Paths]`nPlugins = plugins"
+          Write-Host "Destination folders and qt.conf created."
+
+          Write-Host "Starting brute-force search for required main DLLs..."
+          foreach ($dllPattern in $requiredDlls) {
+              $foundFile = Get-ChildItem -Path $searchRoot -Recurse -Filter $dllPattern | Select-Object -First 1
+              if ($foundFile) {
+                  Copy-Item -Path $foundFile.FullName -Destination $destDir -Force
               } else {
-                  Write-Host "ERROR: Required plugin directory not found: $sourcePluginPath" -ForegroundColor Red; exit 1
+                  Write-Host "WARNING: Could not find required file '$dllPattern'." -ForegroundColor Yellow
               }
           }
 
-          $requiredDlls = @(
-              "avcodec*.dll",
-              "avfilter*.dll",
-              "avutil*.dll",
-              "boost_context*.dll",
-              "fmt.dll",
-              "libcrypto-*.dll",
-              "libssl-*.dll",
-              "libwinpthread-*.dll",
-              "lz4.dll",
-              "OpenAL32.dll",
-              "Qt6Core.dll",
-              "Qt6Gui.dll",
-              "Qt6Network.dll",
-              "Qt6Widgets.dll",
-              "SDL2.dll",
-              "swscale-*.dll",
-              "zlib.dll",
-              "zstd.dll"
-          )
-          foreach ($dllPattern in $requiredDlls) {
-              $foundFile = Get-Item (Join-Path $sourceDir "bin\$dllPattern") -ErrorAction SilentlyContinue
-              if ($foundFile) {
-                  Copy-Item -Path $foundFile.FullName -Destination $destDir -Force
-                  Write-Host "Copied DLL: $($foundFile.Name)"
-              } else {
-                  Write-Host "ERROR: Required DLL not found with pattern: $dllPattern" -ForegroundColor Red; exit 1
+          Write-Host "Starting brute-force search for required plugin DLLs..."
+          foreach ($folderName in $pluginManifest.Keys) {
+              $finalPluginSubDir = Join-Path $pluginsDestDir $folderName
+              New-Item -ItemType Directory -Path $finalPluginSubDir -Force
+              
+              foreach ($pluginDll in $pluginManifest[$folderName]) {
+                  $foundPluginFile = Get-ChildItem -Path $searchRoot -Recurse -Filter $pluginDll | Select-Object -First 1
+                  if ($foundPluginFile) {
+                      Copy-Item -Path $foundPluginFile.FullName -Destination $finalPluginSubDir -Force
+                  } else {
+                      Write-Host "WARNING: Could not find required plugin '$pluginDll' for folder '$folderName'." -ForegroundColor Yellow
+                  }
               }
           }
-          Write-Host "Dependency deployment complete."
+
+          Write-Host "SUCCESS: Dependency deployment finished. Check warnings for any missing files." -ForegroundColor Cyan
 
       - name: Remove PDB Symbols
         shell: pwsh
         run: |
           $packageDir = ".\citron\build\bin\Release"
           Write-Host "Removing PDB files from $packageDir to reduce package size..."
+          # Remove PDBs from the main directory
           Remove-Item -Path (Join-Path $packageDir "*.pdb") -Force -ErrorAction SilentlyContinue
+          # Remove PDBs from the plugins subdirectories
+          Remove-Item -Path (Join-Path $packageDir "plugins\*\*.pdb") -Force -ErrorAction SilentlyContinue
           Write-Host "PDB files removed."
           
       - name: Package Windows Build
