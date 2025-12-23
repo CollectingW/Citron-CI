@@ -129,6 +129,11 @@ jobs:
         working-directory: ./citron
         shell: cmd
         run: |
+          set ATTEMPT=0
+          :retry_loop
+          set /a ATTEMPT=%ATTEMPT%+1
+          echo Attempt %ATTEMPT%: Configuring CMake and installing dependencies...
+
           cmake -B build -S . -G "Visual Studio 17 2022" -A ${{ matrix.arch }} ^
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_BUILD_TYPE=Nightly ^
@@ -141,6 +146,19 @@ jobs:
             -DENABLE_OPENSSL=ON ^
             -DCITRON_USE_AUTO_UPDATER=ON ^
             -DCITRON_ENABLE_LIBARCHIVE=ON
+
+          if %ERRORLEVEL% NEQ 0 (
+            if %ATTEMPT% LSS 5 (
+              echo ⚠️ CMake configuration failed. Retrying in 30 seconds...
+              timeout /t 30 /nobreak
+              goto retry_loop
+            ) else (
+              echo ❌ CMake configuration failed after %ATTEMPT% attempts.
+              exit /b 1
+            )
+          )
+          echo ✅ CMake configuration successful.
+          
       - name: Build Citron
         working-directory: ./citron
         shell: cmd
