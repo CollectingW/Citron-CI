@@ -73,21 +73,28 @@ jobs:
       - name: Clone Citron Source
         shell: bash
         run: |
-          for i in {1..5}; do
-            echo "Attempting to clone repository (Attempt $i of 5)..."
+          ATTEMPT=0
+          MAX_ATTEMPTS=999
+          
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
+            
+            # Wipe the folder completely so we start from zero every time
+            rm -rf citron
+            
+            # Try the full recursive clone
             if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
-              echo "✅ Clone successful."
-              break
+              echo "✅ Clone successful on attempt $ATTEMPT."
+              exit 0
             fi
             
-            if [ "$i" -eq 5 ]; then
-              echo "❌ Failed to clone repository after 5 attempts."
-              exit 1
-            fi
-
-            echo "⚠️ Clone failed. Retrying in 15 seconds..."
+            echo "⚠️ Clone failed. Wiping directory and retrying in 15 seconds..."
             sleep 15
           done
+
+          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
+          exit 1
 
       - name: Patch AGL in Qt FindWrapOpenGL.cmake
         working-directory: ./citron
