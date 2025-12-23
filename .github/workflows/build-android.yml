@@ -99,37 +99,37 @@ jobs:
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           FEATURE="feature/android-game-file-extraction"
-          BRANCH_ARG="" # Initialize empty branch argument
+          
+          ATTEMPT=0
+          MAX_ATTEMPTS=999
 
-          if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
-            echo "🌿 Preparing to clone feature branch: $FEATURE"
-            BRANCH_ARG="-b $FEATURE"
-          else
-            echo "📦 Preparing to clone main branch"
-          fi
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
 
-          for i in {1..5}; do
-            echo "Attempting to clone repository (Attempt $i of 5)..."
-            
-            if git clone --recursive --depth 1 $BRANCH_ARG "$REPO_URL" citron_source; then
-              echo "✅ Clone successful."
-              break # Exit the loop on success
-            fi
-            
-            if [ "$i" -eq 5 ]; then
-              echo "❌ Failed to clone repository after 5 attempts."
-              exit 1
+            # 1. CRITICAL: Wipe the directory before every attempt
+            rm -rf citron_source
+
+            if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
+              echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
+              if git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source; then
+                echo "✅ Clone successful."
+                exit 0
+              fi
+            else
+              echo "📦 Cloning main branch"
+              if git clone --recursive --depth 1 "$REPO_URL" citron_source; then
+                echo "✅ Clone successful."
+                exit 0
+              fi
             fi
 
             echo "⚠️ Clone failed. Retrying in 15 seconds..."
             sleep 15
           done
 
-      - name: Clean and Force-Update Submodules
-        working-directory: ./citron_source
-        run: |
-          git submodule deinit --all --force
-          git submodule update --init --recursive --force
+          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
+          exit 1
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -227,23 +227,41 @@ jobs:
           sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
 
       - name: Clone Citron Source Code
+        shell: bash
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           FEATURE="feature/android-game-file-extraction"
           
-          if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
-            echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-            git clone --recurse-submodules --depth 1 -b "$FEATURE" "$REPO_URL" citron_source
-          else
-            echo "📦 Cloning main branch"
-            git clone --recurse-submodules --depth 1 "$REPO_URL" citron_source
-          fi
+          ATTEMPT=0
+          MAX_ATTEMPTS=999
 
-      - name: Clean and Force-Update Submodules
-        working-directory: ./citron_source
-        run: |
-          git submodule deinit --all --force
-          git submodule update --init --recursive --force
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
+
+            # 1. CRITICAL: Wipe the directory before every attempt
+            rm -rf citron_source
+
+            if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
+              echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
+              if git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source; then
+                echo "✅ Clone successful."
+                exit 0
+              fi
+            else
+              echo "📦 Cloning main branch"
+              if git clone --recursive --depth 1 "$REPO_URL" citron_source; then
+                echo "✅ Clone successful."
+                exit 0
+              fi
+            fi
+
+            echo "⚠️ Clone failed. Retrying in 15 seconds..."
+            sleep 15
+          done
+
+          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
+          exit 1
 
       - name: Get Citron Commit Hash
         id: get_hash
