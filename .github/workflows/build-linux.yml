@@ -102,24 +102,32 @@ jobs:
       - name: Checkout Workflow Scripts
         uses: actions/checkout@v4
 
-      - name: Checkout Upstream Source Code
+      - name: Clone Citron Source Code
         shell: bash
         run: |
-          for i in {1..5}; do
-            echo "Attempting to clone repository with submodules (Attempt $i of 5)..."
-            if git clone --recurse-submodules https://git.citron-emu.org/Citron/Emulator.git emulator; then
-              echo "✅ Clone successful."
-              break
-            fi
-            
-            if [ "$i" -eq 5 ]; then
-              echo "❌ Failed to clone repository after 5 attempts."
-              exit 1
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          
+          ATTEMPT=0
+          MAX_ATTEMPTS=999
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
+
+            # 1. CRITICAL: Wipe the directory before every attempt
+            rm -rf emulator
+
+            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" emulator; then
+              echo "✅ Clone successful on attempt $ATTEMPT."
+              exit 0
             fi
 
             echo "⚠️ Clone failed. Retrying in 15 seconds..."
             sleep 15
           done
+
+          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
+          exit 1
 
       - name: Prepare Build Environment
         run: |
