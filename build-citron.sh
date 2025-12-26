@@ -12,10 +12,8 @@ else
     ARCH_FLAGS="-march=armv8-a -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld"
 fi
 
-# --- Source Code Checkout and Versioning ---
-git clone --recursive "https://git.citron-emu.org/citron/emulator.git" ./citron
-cd ./citron
-
+# --- Versioning ---
+# We are already in the cloned directory provided by the CI
 if [ "$DEVEL" = 'true' ]; then
     CITRON_TAG="$(git rev-parse --short HEAD)"
     VERSION="$CITRON_TAG"
@@ -47,7 +45,7 @@ JOBS=$(nproc --all)
 
 mkdir build && cd build
 
-# Determine Variant Name based on Arch/Flag
+# Determine Variant Name based on Arch/Flag to match Updater logic
 if [ "$1" = 'v3' ]; then
     VARIANT="Linux x86_64 v3"
 elif [ "$ARCH" = 'x86_64' ]; then
