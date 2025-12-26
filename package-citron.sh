@@ -9,6 +9,7 @@ if [ -z "$APP_VERSION" ]; then
 fi
 
 # Construct unique names for the AppImage and tarball based on the build matrix.
+# Example: citron_nightly-abc1234-linux-x86_64_v3.AppImage
 OUTNAME_BASE="citron_nightly-${APP_VERSION}-linux-${ARCH}${ARCH_SUFFIX}"
 export OUTNAME_APPIMAGE="${OUTNAME_BASE}.AppImage"
 export OUTNAME_TAR="${OUTNAME_BASE}.tar.zst"
@@ -64,7 +65,7 @@ echo "Renaming to final suffixed name: ${OUTNAME_APPIMAGE}..."
 
 # Now, use the dynamically discovered and cleaned filename for the move operations.
 mv -v "${SOURCE_APPIMAGE}" "${OUTNAME_APPIMAGE}"
-mv -v "${SOURCE_APPIMAGE}.zsync" "${OUTNAME_APPIMAGE}.zsync"
+[ -f "${SOURCE_APPIMAGE}.zsync" ] && mv -v "${SOURCE_APPIMAGE}.zsync" "${OUTNAME_APPIMAGE}.zsync"
 
 mkdir -p ./dist
 
