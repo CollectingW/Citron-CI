@@ -137,7 +137,8 @@ jobs:
             -DENABLE_WEB_SERVICE=ON \
             -DENABLE_OPENSSL=ON \
             -DENABLE_SDL2=ON \
-            -DCITRON_USE_EXTERNAL_SDL2=OFF
+            -DCITRON_USE_EXTERNAL_SDL2=OFF \
+            -DCITRON_BUILD_TYPE=Stable
 
       - name: Build Citron
         working-directory: ./citron
