@@ -79,7 +79,7 @@ jobs:
         include:
           - name: "Citron Build (Normal x86_64)"
             os: ubuntu-latest
-            artifact_suffix: "_x86_64"
+            artifact_suffix: ""
             script_suffix: ""
             build_arg: ""
           - name: "Citron Build (Optimized x86_64)"
