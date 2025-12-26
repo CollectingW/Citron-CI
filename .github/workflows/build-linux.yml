@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          BRANCH="PLACEHOLDER_BRANCH_NAME"
+          BRANCH="feat/new-updater"
           
           ATTEMPT=0
           MAX_ATTEMPTS=999
