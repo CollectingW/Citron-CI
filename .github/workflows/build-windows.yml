@@ -82,15 +82,17 @@ jobs:
       - name: Clone Citron Source
         shell: bash
         run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          BRANCH="PLACEHOLDER_BRANCH_NAME"
           ATTEMPT=0
           MAX_ATTEMPTS=999
           while true; do
             ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning Citron..."
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning Citron branch $BRANCH..."
             
             rm -rf citron
             
-            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
+            if git clone --recursive -b "$BRANCH" "$REPO_URL" citron; then
               echo "Clone successful on attempt $ATTEMPT."
               break
             fi
@@ -145,7 +147,8 @@ jobs:
             -DENABLE_WEB_SERVICE=ON ^
             -DENABLE_OPENSSL=ON ^
             -DCITRON_USE_AUTO_UPDATER=ON ^
-            -DCITRON_ENABLE_LIBARCHIVE=ON
+            -DCITRON_ENABLE_LIBARCHIVE=ON ^
+            -DCITRON_VARIANT="Windows ${{ matrix.arch }}"
 
           if %ERRORLEVEL% NEQ 0 (
             if %ATTEMPT% LSS 5 (
