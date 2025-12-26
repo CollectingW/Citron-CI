@@ -106,18 +106,19 @@ jobs:
         shell: bash
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          BRANCH="PLACEHOLDER_BRANCH_NAME"
           
           ATTEMPT=0
           MAX_ATTEMPTS=999
 
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning branch $BRANCH..."
 
             # 1. CRITICAL: Wipe the directory before every attempt
             rm -rf emulator
 
-            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" emulator; then
+            if git clone --recursive -b "$BRANCH" "$REPO_URL" emulator; then
               echo "✅ Clone successful on attempt $ATTEMPT."
               exit 0
             fi
@@ -157,7 +158,7 @@ jobs:
           GIT_SHA=$(git rev-parse --short HEAD)
           export APP_VERSION="${GIT_SHA}"
           export VERSION="${GIT_SHA}"
-          export ARCH_SUFFIX="${{ matrix.script_suffix }}"
+          export ARCH_SUFFIX="${{ matrix.artifact_suffix }}"
           export DEVEL="true"
           chmod +x ./package-citron.sh
           ./package-citron.sh
