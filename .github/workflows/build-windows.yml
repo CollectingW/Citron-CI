@@ -78,35 +78,43 @@ jobs:
           Invoke-WebRequest -Uri $vulkan_sdk_url -OutFile VulkanSDK-Installer.exe
           Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses", "--default-answer", "--confirm-command", "install" -Wait
           echo "C:\VulkanSDK\1.3.283.0\Bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Clone Citron Source
         shell: bash
         run: |
-          for i in {1..5}; do
-            echo "Attempting to clone repository (Attempt $i of 5)..."
+          ATTEMPT=0
+          MAX_ATTEMPTS=999
+          while true; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning Citron..."
+            
+            rm -rf citron
+            
             if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
-              echo "Clone successful."
+              echo "Clone successful on attempt $ATTEMPT."
               break
             fi
-            
-            if [ "$i" -eq 5 ]; then
-              echo "Failed to clone repository after 5 attempts."
+
+            if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
+              echo "Failed after $MAX_ATTEMPTS attempts."
               exit 1
             fi
 
-            echo "Clone failed. Retrying in 10 seconds..."
-            sleep 10
+            echo "Clone failed. Retrying in 15 seconds..."
+            sleep 15
           done
 
       - name: Cache vcpkg and Qt dependencies
         uses: actions/cache@v4
         id: cache-vcpkg
         with:
-          # The path contains both the vcpkg installed libs and the downloaded Qt binaries
-          path: ./citron/build
-          # The key invalidates the cache if the OS, architecture, or vcpkg dependency list changes
-          key: vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('**/vcpkg.json') }}
+          path: |
+            ./citron/build
+            ~/.vcpkg/archives
+            ${{ env.LOCALAPPDATA }}\vcpkg\archives
+          key: vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('citron/vcpkg.json') }}-${{ hashFiles('citron/externals/vcpkg/.git/HEAD') }}
           restore-keys: |
-            vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-
+            vcpkg-qt-cache-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('citron/vcpkg.json') }}-
 
       - name: Get Nightly Version
         id: version
@@ -121,6 +129,11 @@ jobs:
         working-directory: ./citron
         shell: cmd
         run: |
+          set ATTEMPT=0
+          :retry_loop
+          set /a ATTEMPT=%ATTEMPT%+1
+          echo Attempt %ATTEMPT%: Configuring CMake and installing dependencies...
+
           cmake -B build -S . -G "Visual Studio 17 2022" -A ${{ matrix.arch }} ^
             -DCITRON_USE_BUNDLED_VCPKG=ON ^
             -DCITRON_BUILD_TYPE=Nightly ^
@@ -133,6 +146,19 @@ jobs:
             -DENABLE_OPENSSL=ON ^
             -DCITRON_USE_AUTO_UPDATER=ON ^
             -DCITRON_ENABLE_LIBARCHIVE=ON
+
+          if %ERRORLEVEL% NEQ 0 (
+            if %ATTEMPT% LSS 5 (
+              echo ⚠️ CMake configuration failed. Retrying in 30 seconds...
+              timeout /t 30 /nobreak
+              goto retry_loop
+            ) else (
+              echo ❌ CMake configuration failed after %ATTEMPT% attempts.
+              exit /b 1
+            )
+          )
+          echo ✅ CMake configuration successful.
+          
       - name: Build Citron
         working-directory: ./citron
         shell: cmd
