@@ -1,0 +1,73 @@
+name: Create Citron PGO Toolkit (Portable SDK)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 0"
+
+jobs:
+  create-toolkit:
+    runs-on: ubuntu-latest
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    steps:
+      - name: Install Git and Dependencies
+        run: |
+          pacman -Syu --noconfirm --needed git wget zip tar zstd
+          wget https://raw.githubusercontent.com/${{ github.repository }}/main/get-dependencies.sh
+          chmod +x ./get-dependencies.sh
+          ./get-dependencies.sh
+
+      - name: Clone Citron Source
+        run: |
+          git clone --recursive https://git.citron-emu.org/Citron/Emulator.git citron-source
+          cd citron-source
+          git config --global --add safe.directory "$PWD"
+
+      - name: Harvest Toolchain and Sysroot
+        run: |
+          mkdir -p toolkit/toolchain toolkit/sysroot/lib toolkit/sysroot/include toolkit/scripts
+          
+          # Copy Compiler and Build Tools
+          cp -r /usr/bin/gcc /usr/bin/g++ /usr/bin/cc /usr/bin/c++ /usr/bin/cmake /usr/bin/ninja /usr/bin/ld* toolkit/toolchain/
+          
+          # Copy Libraries (Filtered to avoid system bloat but keep essentials)
+          cp -d /usr/lib/libgcc_s.so* /usr/lib/libstdc++.so* /usr/lib/libm.so* /usr/lib/libc.so* toolkit/sysroot/lib/
+          # Copy Citron-specific libs found in get-dependencies
+          for lib in Qt6 Boost SDL2 fmt enet opus zstd lz4 crypto ssl; do
+            cp -d /usr/lib/lib${lib}* toolkit/sysroot/lib/ || true
+          done
+          
+          # Copy Headers
+          cp -r /usr/include/* toolkit/sysroot/include/
+          
+          # Copy Qt6 shared files
+          mkdir -p toolkit/sysroot/share
+          cp -r /usr/share/qt6 toolkit/sysroot/share/
+
+      - name: Prepare Toolkit Scripts
+        run: |
+          # We will move the local scripts (defined below) into the toolkit folder
+          cp READMEFORPGO.txt toolkit/
+          cp Step1_Train.sh toolkit/
+          cp Step2_Finalize.sh toolkit/
+          cp package-local.sh toolkit/
+
+      - name: Create Final ZIP
+        run: |
+          mv citron-source toolkit/
+          zip -r Citron-PGO-Toolkit-Linux.zip toolkit/
+
+      - name: Upload Toolkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: Citron-PGO-Toolkit
+          path: Citron-PGO-Toolkit-Linux.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: pgo-toolkit
+          name: "Citron PGO Training Toolkit"
+          files: Citron-PGO-Toolkit-Linux.zip
+          body: "This toolkit contains everything needed to build a hardware-optimized PGO version of Citron on your own Linux device."
