@@ -42,7 +42,8 @@ wget --retry-connrefused --tries=30 "$SHARUN" -O ./quick-sharun
 chmod +x ./quick-sharun
 
 # Pass the local binary to sharun
-./quick-sharun ./citron /usr/lib/libgamemode.so* /usr/lib/libpulse.so*
+# Wrap with xvfb-run to ensure a display environment is present
+xvfb-run --auto-servernum ./quick-sharun ./citron /usr/lib/libgamemode.so* /usr/lib/libpulse.so*
 
 echo "Copying Qt translation files..."
 mkdir -p ./AppDir/usr/share/qt6
