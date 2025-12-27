@@ -1,23 +1,28 @@
 #!/bin/sh
 set -ex
 
-# 1. Configuration
+# 1. Setup
 ARCH="${ARCH:-$(uname -m)}"
 export VERSION="${APP_VERSION:-nightly}"
 RELEASE_URL="https://github.com/CollectingW/Citron-CI/releases/download/binary"
 
-# 2. Download Assets
-echo "Downloading assets..."
+# 2. Assets
 wget -q "$RELEASE_URL/citron" -O ./citron
 wget -q "$RELEASE_URL/citron.svg" -O ./citron.svg
 wget -q "$RELEASE_URL/org.citron_emu.citron.desktop" -O ./org.citron_emu.citron.desktop
 chmod +x ./citron
 
-# 3. Debug: Check exactly what the binary wants before we start
-echo "Checking binary requirements..."
-ldd ./citron || true
+echo "Creating System-level Compatibility Links..."
+sudo ln -sf /usr/lib/libboost_context.so /usr/lib/libboost_context.so.1.83.0
+sudo ln -sf /usr/lib/libboost_thread.so /usr/lib/libboost_thread.so.1.83.0
+sudo ln -sf /usr/lib/libfmt.so /usr/lib/libfmt.so.11
+# Refresh the system library cache
+sudo ldconfig
 
-# 4. Packaging Setup
+# 4. Final Verification (Should show NO 'not found' now)
+ldd ./citron
+
+# 5. Packaging Setup
 export DESKTOP="$(pwd)/org.citron_emu.citron.desktop"
 export ICON="$(pwd)/citron.svg"
 export DEPLOY_OPENGL=1
@@ -27,47 +32,32 @@ export DEPLOY_PIPEWIRE=1
 wget -q https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/quick-sharun.sh -O ./quick-sharun
 chmod +x ./quick-sharun
 
-# 5. Bundling - FORCING the heavy libraries to ensure size and compatibility
-echo "Forcing bundling of system libraries..."
+# 6. HEAVY BUNDLING
+# We tell sharun exactly where the heavy files are
 xvfb-run --auto-servernum ./quick-sharun ./citron \
-    /usr/lib/libboost*.so* \
+    /usr/lib/libboost_*.so* \
+    /usr/lib/libavcodec.so* \
+    /usr/lib/libavutil.so* \
+    /usr/lib/libavformat.so* \
+    /usr/lib/libswscale.so* \
     /usr/lib/libfmt.so* \
     /usr/lib/libenet.so* \
-    /usr/lib/libSDL2-2.0.so* \
-    /usr/lib/libssl.so* \
-    /usr/lib/libcrypto.so* \
-    /usr/lib/libgamemode.so* \
-    /usr/lib/libpulse.so*
+    /usr/lib/libSDL2*.so*
 
-# 6. THE UNIVERSAL VERSION FIX
-# This goes through every major library and tells it: 
-# "If the app asks for version X, give it whatever version we have."
-echo "Applying universal version compatibility fixes..."
+# 7. THE STEAM DECK INTERNAL FIX
+# Now we make sure those links exist INSIDE the AppImage too
+echo "Fixing internal AppImage links..."
 cd AppDir/shared/lib/
-for lib_path in libboost_context.so libboost_thread.so libboost_filesystem.so libfmt.so libenet.so; do
-    # Find the actual file we bundled (e.g., libfmt.so.11.0.2)
-    actual_file=$(ls $lib_path* | head -n 1)
-    if [ -f "$actual_file" ]; then
-        echo "Linking $actual_file for compatibility..."
-        # Link for Steam Deck versions
-        ln -sf "$actual_file" "libboost_context.so.1.83.0" || true
-        ln -sf "$actual_file" "libfmt.so.10" || true
-        ln -sf "$actual_file" "libfmt.so.11" || true
-    fi
-done
+ln -sf libboost_context.so.1.89.0 libboost_context.so.1.83.0 || true
+ln -sf libboost_thread.so.1.89.0 libboost_thread.so.1.83.0 || true
+ln -sf libfmt.so.11.* libfmt.so.11 || true
 cd ../../../
 
-echo "Copying Qt translation files..."
+echo "Copying translations..."
 mkdir -p ./AppDir/usr/share/qt6
 cp -r /usr/share/qt6/translations ./AppDir/usr/share/qt6/
 
-if [ "$DEVEL" = 'true' ]; then
-	sed -i 's|Name=citron|Name=citron nightly|' ./AppDir/org.citron_emu.citron.desktop
-fi
-
-echo 'SHARUN_ALLOW_SYS_VK_ICD=1' > ./AppDir/.env
-
-# 7. AppImage Creation
+# 8. Create AppImage
 wget -q https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/uruntime2appimage.sh -O ./uruntime2appimage
 chmod +x ./uruntime2appimage
 
