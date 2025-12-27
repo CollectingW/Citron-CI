@@ -25,29 +25,42 @@ jobs:
 
       - name: Download Portable Build Tools
         run: |
-          mkdir -p toolkit/toolchain toolkit/sysroot toolkit/helpers
-          # Download Static CMake (Portable)
+          mkdir -p toolkit/toolchain/bin toolkit/sysroot toolkit/helpers
+          # Download Static CMake
           wget https://github.com/Kitware/CMake/releases/download/v3.31.3/cmake-3.31.3-linux-x86_64.tar.gz
           tar -xzf cmake-3.31.3-linux-x86_64.tar.gz --strip-components=1 -C toolkit/toolchain/
-          # Download Static Ninja (Portable)
+          # Download Static Ninja
           wget https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip
           unzip ninja-linux.zip -d toolkit/toolchain/bin/
 
       - name: Harvest and Sharun GCC
         run: |
-          # Use sharun to make the Arch GCC portable
+          # Use sharun to make the Arch GCC suite portable
           wget https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/quick-sharun.sh -O quick-sharun
           chmod +x quick-sharun
-          ./quick-sharun /usr/bin/gcc /usr/bin/g++ /usr/bin/cc /usr/bin/c++ /usr/bin/as /usr/bin/ld
+          
+          # Bypass desktop/icon checks by setting them to NONE
+          export DESKTOP=NONE
+          export ICON=NONE
+          
+          # We need the frontends AND the actual compiler internals (cc1, cc1plus)
+          ./quick-sharun /usr/bin/gcc /usr/bin/g++ /usr/bin/as /usr/bin/ld /usr/lib/gcc/x86_64-pc-linux-gnu/*/cc1 /usr/lib/gcc/x86_64-pc-linux-gnu/*/cc1plus
           
           # Move sharun'd binaries and their libraries into our toolchain
-          cp -r AppDir/usr/bin/* toolkit/toolchain/bin/
-          cp -r AppDir/usr/lib toolkit/toolchain/
+          cp -rv AppDir/usr/bin/* toolkit/toolchain/bin/
+          cp -rv AppDir/usr/lib toolkit/toolchain/
           
-          # Harvest Sysroot (headers and target libs)
+          # Manually copy the GCC internal headers/lib structure which sharun might miss
+          mkdir -p toolkit/toolchain/lib/gcc
+          cp -rv /usr/lib/gcc/x86_64-pc-linux-gnu toolkit/toolchain/lib/gcc/
+
+      - name: Harvest Sysroot
+        run: |
           mkdir -p toolkit/sysroot/lib toolkit/sysroot/include
-          cp -r /usr/include/* toolkit/sysroot/include/
-          cp -d /usr/lib/libQt6* /usr/lib/libBoost* /usr/lib/libSDL2* /usr/lib/libfmt* /usr/lib/libenet* /usr/lib/libcrypto* /usr/lib/libssl* toolkit/sysroot/lib/ || true
+          # Copy headers
+          cp -rv /usr/include/* toolkit/sysroot/include/
+          # Copy target libraries for Citron
+          cp -dv /usr/lib/libQt6* /usr/lib/libBoost* /usr/lib/libSDL2* /usr/lib/libfmt* /usr/lib/libenet* /usr/lib/libcrypto* /usr/lib/libssl* /usr/lib/libopus* /usr/lib/libzstd* /usr/lib/liblz4* toolkit/sysroot/lib/ || true
 
       - name: Bundle Helper Tools
         run: |
@@ -55,7 +68,7 @@ jobs:
           wget https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/quick-sharun.sh -O toolkit/helpers/quick-sharun
           chmod +x toolkit/helpers/*
 
-      - name: Prepare Toolkit
+      - name: Prepare Toolkit Scripts
         run: |
           wget https://raw.githubusercontent.com/${{ github.repository }}/main/READMEFORPGO.txt -O toolkit/READMEFORPGO.txt
           wget https://raw.githubusercontent.com/${{ github.repository }}/main/Step1_Train.sh -O toolkit/Step1_Train.sh
@@ -67,7 +80,7 @@ jobs:
       - name: Create Final ZIP
         run: zip -r Citron-PGO-Toolkit-Linux.zip toolkit/
 
-      - name: Upload Toolkit
+      - name: Upload Toolkit Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Citron-PGO-Toolkit
