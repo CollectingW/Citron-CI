@@ -1,0 +1,30 @@
+name: Package Citron AppImage
+on:
+  workflow_dispatch: # Allows you to run it manually
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:latest # Recommended for AnyLinux builds
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm wget git tar zstd qt6-base qt6-translations sed awk
+
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Run Packaging Script
+        env:
+          APP_VERSION: ${{ github.run_number }}
+          DEVEL: 'true'
+        run: |
+          chmod +x package.sh
+          ./package.sh
+
+      - name: Upload Finished AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: Citron-AppImage
+          path: dist/*
