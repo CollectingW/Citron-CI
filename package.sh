@@ -12,34 +12,7 @@ wget -q "$RELEASE_URL/citron.svg" -O ./citron.svg
 wget -q "$RELEASE_URL/org.citron_emu.citron.desktop" -O ./org.citron_emu.citron.desktop
 chmod +x ./citron
 
-# ---------------------------------------------------------
-# 3. THE ULTIMATE COMPATIBILITY BRIDGE
-# ---------------------------------------------------------
-echo "Fixing missing system links..."
-
-# Fix Boost and Fmt (Already proven to work)
-sudo ln -sf /usr/lib/libboost_context.so /usr/lib/libboost_context.so.1.83.0
-sudo ln -sf /usr/lib/libboost_thread.so /usr/lib/libboost_thread.so.1.83.0
-sudo ln -sf /usr/lib/libfmt.so /usr/lib/libfmt.so.11
-
-# Fix FFmpeg (The missing 40MB)
-# We map the generic Arch FFmpeg libs to the specific versions Citron wants
-sudo ln -sf /usr/lib/libavcodec.so    /usr/lib/libavcodec.so.61
-sudo ln -sf /usr/lib/libavdevice.so   /usr/lib/libavdevice.so.61
-sudo ln -sf /usr/lib/libavfilter.so   /usr/lib/libavfilter.so.10
-sudo ln -sf /usr/lib/libavformat.so   /usr/lib/libavformat.so.61
-sudo ln -sf /usr/lib/libavutil.so     /usr/lib/libavutil.so.59
-sudo ln -sf /usr/lib/libswresample.so /usr/lib/libswresample.so.5
-sudo ln -sf /usr/lib/libswscale.so    /usr/lib/libswscale.so.8
-
-# Refresh the system library cache
-sudo ldconfig
-
-# 4. FINAL VERIFICATION (Ensure NOTHING is 'not found')
-echo "Verifying all dependencies are found..."
-ldd ./citron
-
-# 5. Packaging Setup
+# 3. Packaging Setup
 export DESKTOP="$(pwd)/org.citron_emu.citron.desktop"
 export ICON="$(pwd)/citron.svg"
 export DEPLOY_OPENGL=1
@@ -49,41 +22,65 @@ export DEPLOY_PIPEWIRE=1
 wget -q https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/quick-sharun.sh -O ./quick-sharun
 chmod +x ./quick-sharun
 
-# 6. BUNDLING
-# We include FFmpeg explicitly to be 100% safe
+# 4. THE BRUTE FORCE BUNDLE
+# We are going to explicitly tell sharun to grab every single library
+# Citron needs, using wildcards to ensure we get the full ~150MB.
 xvfb-run --auto-servernum ./quick-sharun ./citron \
     /usr/lib/libboost_*.so* \
-    /usr/lib/libav*.so* \
-    /usr/lib/libsw*.so* \
+    /usr/lib/libavcodec.so* \
+    /usr/lib/libavutil.so* \
+    /usr/lib/libavformat.so* \
+    /usr/lib/libavfilter.so* \
+    /usr/lib/libavdevice.so* \
+    /usr/lib/libswscale.so* \
+    /usr/lib/libswresample.so* \
     /usr/lib/libfmt.so* \
     /usr/lib/libenet.so* \
     /usr/lib/libSDL2*.so* \
-    /usr/lib/libgamemode.so* \
-    /usr/lib/libpulse.so*
+    /usr/lib/libcrypto.so* \
+    /usr/lib/libssl.so*
 
-# 7. STEAM DECK INTERNAL LINKS
-# This ensures that inside the AppImage, Citron finds the version names it expects
-echo "Fixing internal AppImage links..."
+# 5. THE COMPATIBILITY BRIDGE (Inside the AppDir)
+# Now that the files are safely inside the AppImage folder, 
+# we create the specific names Citron is looking for.
+echo "Creating compatibility links inside AppDir..."
 cd AppDir/shared/lib/
-# Get the actual version names from the bundled files and link them
-ln -sf libboost_context.so.1.* libboost_context.so.1.83.0 || true
-ln -sf libboost_thread.so.1.* libboost_thread.so.1.83.0 || true
-ln -sf libfmt.so.11.* libfmt.so.11 || true
-# FFmpeg links
-ln -sf libavcodec.so.61.* libavcodec.so.61 || true
-ln -sf libavdevice.so.61.* libavdevice.so.61 || true
-ln -sf libavfilter.so.10.* libavfilter.so.10 || true
-ln -sf libavformat.so.61.* libavformat.so.61 || true
-ln -sf libavutil.so.59.* libavutil.so.59 || true
-ln -sf libswresample.so.5.* libswresample.so.5 || true
-ln -sf libswscale.so.8.* libswscale.so.8 || true
+
+# This loop finds whatever version was bundled and creates the "v1.83" or "v11" link Citron wants.
+fix_link() {
+    local target=$1
+    local link_name=$2
+    # Find the actual file (e.g., libboost_context.so.1.89.0)
+    local actual=$(ls $target* 2>/dev/null | head -n 1)
+    if [ -n "$actual" ]; then
+        ln -sf "$(basename "$actual")" "$link_name"
+    fi
+}
+
+fix_link "libboost_context.so" "libboost_context.so.1.83.0"
+fix_link "libboost_thread.so" "libboost_thread.so.1.83.0"
+fix_link "libfmt.so" "libfmt.so.11"
+fix_link "libavcodec.so" "libavcodec.so.61"
+fix_link "libavformat.so" "libavformat.so.61"
+fix_link "libavutil.so" "libavutil.so.59"
+fix_link "libavfilter.so" "libavfilter.so.10"
+fix_link "libavdevice.so" "libavdevice.so.61"
+fix_link "libswscale.so" "libswscale.so.8"
+fix_link "libswresample.so" "libswresample.so.5"
+
 cd ../../../
 
-echo "Copying translations..."
+# 6. Copy translations
 mkdir -p ./AppDir/usr/share/qt6
 cp -r /usr/share/qt6/translations ./AppDir/usr/share/qt6/
 
-# 8. Create AppImage
+if [ "$DEVEL" = 'true' ]; then
+	sed -i 's|Name=citron|Name=citron nightly|' ./AppDir/org.citron_emu.citron.desktop
+fi
+
+echo 'SHARUN_ALLOW_SYS_VK_ICD=1' > ./AppDir/.env
+
+# 7. Create AppImage
 wget -q https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/refs/heads/main/useful-tools/uruntime2appimage.sh -O ./uruntime2appimage
 chmod +x ./uruntime2appimage
 
