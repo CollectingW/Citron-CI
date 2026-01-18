@@ -112,13 +112,13 @@ jobs:
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
               echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-              if git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source; then
+              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
             else
               echo "📦 Cloning main branch"
-              if git clone --recursive --depth 1 "$REPO_URL" citron_source; then
+              if git clone --recursive "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
@@ -244,13 +244,13 @@ jobs:
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
               echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-              if git clone --recursive --depth 1 -b "$FEATURE" "$REPO_URL" citron_source; then
+              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
             else
               echo "📦 Cloning main branch"
-              if git clone --recursive --depth 1 "$REPO_URL" citron_source; then
+              if git clone --recursive "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
