@@ -73,24 +73,26 @@ jobs:
       - name: Clone Citron Source
         shell: bash
         run: |
+          git config --global http.version HTTP/1.1
+          
+          git config --global http.userAgent "git/2.39.3 (AppleGit-146)"
+
           ATTEMPT=0
-          MAX_ATTEMPTS=999
+          MAX_ATTEMPTS=10 # Reduced from 999 to avoid looking like a DDoS
           
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
             
-            # Wipe the folder completely so we start from zero every time
             rm -rf citron
             
-            # Try the full recursive clone
-            if git clone --recursive "https://git.citron-emu.org/Citron/Emulator.git" citron; then
+            if git clone --recursive --depth 1 --shallow-submodules "https://git.citron-emu.org/Citron/Emulator.git" citron; then
               echo "✅ Clone successful on attempt $ATTEMPT."
               exit 0
             fi
             
-            echo "⚠️ Clone failed. Wiping directory and retrying in 15 seconds..."
-            sleep 15
+            echo "⚠️ Clone failed. Waiting 30 seconds before retry..."
+            sleep 30
           done
 
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
