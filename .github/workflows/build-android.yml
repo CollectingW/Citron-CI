@@ -131,6 +131,12 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
+      - name: Force Update Submodules
+        working-directory: ./citron_source
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
@@ -182,6 +188,7 @@ jobs:
             -DENABLE_SDL2=OFF \
             -DENABLE_WEB_SERVICE=OFF \
             -DENABLE_OPENSSL=OFF \
+            -DENABLE_FFMPEG=ON \
             -DCITRON_USE_BUNDLED_VCPKG=ON \
             -DCITRON_USE_BUNDLED_FFMPEG=ON \
             -DCITRON_ENABLE_LTO=ON
@@ -264,6 +271,12 @@ jobs:
 
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
+
+      - name: Force Update Submodules
+        working-directory: ./citron_source
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -351,6 +364,7 @@ jobs:
             -DENABLE_SDL2=OFF \
             -DENABLE_WEB_SERVICE=OFF \
             -DENABLE_OPENSSL=OFF \
+            -DENABLE_FFMPEG=ON \
             -DCITRON_USE_BUNDLED_VCPKG=ON \
             -DCITRON_USE_BUNDLED_FFMPEG=ON \
             -DCITRON_ENABLE_LTO=ON
