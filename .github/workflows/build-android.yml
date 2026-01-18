@@ -148,7 +148,9 @@ jobs:
           sudo apt-get install -y -qq \
             wget unzip curl git cmake build-essential \
             pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm
+            autoconf automake libtool yasm \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev libavfilter-dev
 
       - name: Install Android SDK Command-line Tools
         run: |
@@ -315,7 +317,9 @@ jobs:
           sudo apt-get install -y -qq \
             wget unzip curl git cmake build-essential \
             pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm
+            autoconf automake libtool yasm \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev libavfilter-dev
 
       - name: Install Android SDK Command-line Tools
         run: |
