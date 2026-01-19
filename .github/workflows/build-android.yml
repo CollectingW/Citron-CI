@@ -137,11 +137,22 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Download Pre-compiled FFmpeg for Android
+      - name: Setup Vulkan SDK (Fixes Headers Warning)
+        uses: lukka/get-cmake@latest
+      - uses: humbletim/setup-vulkan-sdk@v1.2.0
+        with:
+          vulkan-query-version: 1.3.275.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Download and Extract FFmpeg
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
+          # Create the exact directory Ninja expects
           mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
+          # Extract into that directory and strip the internal root folder if it exists
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1 || \
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -263,11 +274,20 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Download Pre-compiled FFmpeg for Android
+      - name: Setup Vulkan SDK (Fixes Headers Warning)
+        uses: lukka/get-cmake@latest
+      - uses: humbletim/setup-vulkan-sdk@v1.2.0
+        with:
+          vulkan-query-version: 1.3.275.0
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+
+      - name: Download and Extract FFmpeg
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
           mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1 || \
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
 
       - name: Get Citron Commit Hash
         id: get_hash
