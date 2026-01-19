@@ -140,8 +140,8 @@ jobs:
       - name: Download Pre-compiled FFmpeg for Android
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -266,8 +266,8 @@ jobs:
       - name: Download Pre-compiled FFmpeg for Android
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
 
       - name: Get Citron Commit Hash
         id: get_hash
