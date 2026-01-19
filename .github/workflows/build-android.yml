@@ -107,6 +107,7 @@ jobs:
             ATTEMPT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
 
+            # 1. CRITICAL: Wipe the directory before every attempt
             rm -rf citron_source
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
@@ -136,22 +137,21 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Install Vulkan Headers 1.4
-        run: |
-          # Bypasses the VulkanHeaders 1.4 error by cloning the exact version required
-          git clone --depth 1 -b v1.4.304 https://github.com/KhronosGroup/Vulkan-Headers.git
-          mkdir -p citron_source/externals/Vulkan-Headers
-          cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
-
-      - name: Download Pre-compiled FFmpeg for Android
+      - name: Download and Prepare FFmpeg
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          mkdir -p $GITHUB_WORKSPACE/ffmpeg_android
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C $GITHUB_WORKSPACE/ffmpeg_android --strip-components=1
           
-          # Fix Ninja pathing: Map the binaries to where the Android build expects them
-          mkdir -p citron_source/src/android/app/externals
-          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
+          # Also place it where the Android build expects it relatively as a fallback
+          mkdir -p citron_source/src/android/externals/ffmpeg-android-v5.1.LTS-aarch64
+          cp -r $GITHUB_WORKSPACE/ffmpeg_android/. citron_source/src/android/externals/ffmpeg-android-v5.1.LTS-aarch64/
+          echo "FFMPEG_DIR=$GITHUB_WORKSPACE/ffmpeg_android" >> $GITHUB_ENV
+
+      - name: Download Vulkan 1.4 Headers
+        run: |
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git $GITHUB_WORKSPACE/vulkan_headers
+          echo "VULKAN_HEADERS=$GITHUB_WORKSPACE/vulkan_headers" >> $GITHUB_ENV
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -197,7 +197,7 @@ jobs:
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
-            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
+            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DFFMPEG_PREFIX=${{ env.FFMPEG_DIR }} -DVulkan_INCLUDE_DIR=${{ env.VULKAN_HEADERS }}/include"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -242,6 +242,8 @@ jobs:
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
+
+            # 1. CRITICAL: Wipe the directory before every attempt
             rm -rf citron_source
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
@@ -271,19 +273,21 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Install Vulkan Headers 1.4
-        run: |
-          git clone --depth 1 -b v1.4.304 https://github.com/KhronosGroup/Vulkan-Headers.git
-          mkdir -p citron_source/externals/Vulkan-Headers
-          cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
-
-      - name: Download Pre-compiled FFmpeg for Android
+      - name: Download and Prepare FFmpeg
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
-          mkdir -p citron_source/src/android/app/externals
-          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
+          mkdir -p $GITHUB_WORKSPACE/ffmpeg_android
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C $GITHUB_WORKSPACE/ffmpeg_android --strip-components=1
+          
+          # Fallback relatively
+          mkdir -p citron_source/src/android/externals/ffmpeg-android-v5.1.LTS-aarch64
+          cp -r $GITHUB_WORKSPACE/ffmpeg_android/. citron_source/src/android/externals/ffmpeg-android-v5.1.LTS-aarch64/
+          echo "FFMPEG_DIR=$GITHUB_WORKSPACE/ffmpeg_android" >> $GITHUB_ENV
+
+      - name: Download Vulkan 1.4 Headers
+        run: |
+          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git $GITHUB_WORKSPACE/vulkan_headers
+          echo "VULKAN_HEADERS=$GITHUB_WORKSPACE/vulkan_headers" >> $GITHUB_ENV
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -294,12 +298,25 @@ jobs:
         working-directory: ./citron_source
         run: |
           echo "Applying Snapdragon 8 Elite patches..."
+
+          # --- Patch 1: Force System Driver Load (native.cpp) ---
           sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
+
+          # --- Patch 2: 8 Elite Fixes for Qualcomm (vulkan_device.h) ---
           sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
+
+          # --- Patch 3: 8 Elite & Cleanup Fixes (vulkan_device.cpp) ---
+          # 3a: Delete the original `device_id` variable declaration.
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
+          
+          # 3b: Replace all usages of the now-deleted `device_id` with its full source path to prevent compile errors.
           sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
+
+          # 3c: This is the corrected logic: Instead of adding a new variable, we use the `driver_id`
+          # variable that already exists in the correct C++ scope. This fixes the compile error.
           sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
+          
           echo "All patches applied successfully."
 
       - name: Setup and Restore Cache
@@ -347,19 +364,22 @@ jobs:
       - name: Compile Android APK (Snapdragon 8 Elite)
         working-directory: ./citron_source/src/android
         run: |
+          # The git command needs to run from the cloned git repo to get the correct commit count
           COUNT="$(git -C ../.. rev-list --count HEAD)"
           APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
+          
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x ./gradlew
           ./gradlew assembleMainlineRelease \
-            -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
+            -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DFFMPEG_PREFIX=${{ env.FFMPEG_DIR }} -DVulkan_INCLUDE_DIR=${{ env.VULKAN_HEADERS }}/include"
           
           APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "::error::Build failed: No APK file was found."
             exit 1
           fi
+          
           mkdir -p artifacts
           mv "$APK_PATH" "artifacts/$APK_NAME.apk"
 
