@@ -139,10 +139,8 @@ jobs:
 
       - name: Download Pre-compiled FFmpeg for Android
         run: |
-          # Clone the binary repo instead of wget to avoid 404/Raw issues
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
           mkdir -p citron_source/externals
-          # Extract the specific aarch64 ffmpeg into the source externals folder
           tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
 
       - name: Get Citron Commit Hash
@@ -162,7 +160,9 @@ jobs:
           sudo apt-get install -y -qq \
             wget unzip curl git cmake build-essential \
             pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm
+            autoconf automake libtool yasm \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev libavfilter-dev
 
       - name: Install Android SDK Command-line Tools
         run: |
@@ -181,6 +181,27 @@ jobs:
           yes | sdkmanager --licenses > /dev/null || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Configure CMake for Android
+        run: |
+          cmake -B build-android -S citron_source \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-30 \
+            -DANDROID_ARM_NEON=ON \
+            -DENABLE_QT=OFF \
+            -DENABLE_SDL2=OFF \
+            -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_OPENSSL=OFF \
+            -DENABLE_FFMPEG=ON \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=ON \
+            -DCITRON_ENABLE_LTO=ON
+
+      - name: Build with CMake
+        run: |
+          cmake --build build-android --config Release --parallel $(nproc)
 
       - name: Build APK with Gradle
         working-directory: ./citron_source/src/android
@@ -220,7 +241,12 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
+          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch \
+            wget unzip curl git cmake build-essential \
+            pkg-config zip nasm perl \
+            autoconf automake libtool yasm \
+            libavcodec-dev libavformat-dev libavutil-dev \
+            libswscale-dev libswresample-dev libavfilter-dev
 
       - name: Clone Citron Source Code
         shell: bash
@@ -317,14 +343,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            wget unzip curl git cmake build-essential \
-            pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm
-
       - name: Install Android SDK Command-line Tools
         run: |
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
@@ -343,6 +361,27 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
+      - name: Configure CMake for Android
+        run: |
+          cmake -B build-android -S citron_source \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-30 \
+            -DANDROID_ARM_NEON=ON \
+            -DENABLE_QT=OFF \
+            -DENABLE_SDL2=OFF \
+            -DENABLE_WEB_SERVICE=OFF \
+            -DENABLE_OPENSSL=OFF \
+            -DENABLE_FFMPEG=ON \
+            -DCITRON_USE_BUNDLED_VCPKG=ON \
+            -DCITRON_USE_BUNDLED_FFMPEG=ON \
+            -DCITRON_ENABLE_LTO=ON
+
+      - name: Build with CMake
+        run: |
+          cmake --build build-android --config Release --parallel $(nproc)
+
       - name: Compile Android APK (Snapdragon 8 Elite)
         working-directory: ./citron_source/src/android
         run: |
@@ -353,6 +392,7 @@ jobs:
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x ./gradlew
+          
           ./gradlew assembleMainlineRelease \
             -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
           
