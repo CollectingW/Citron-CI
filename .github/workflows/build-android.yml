@@ -160,9 +160,7 @@ jobs:
           sudo apt-get install -y -qq \
             wget unzip curl git cmake build-essential \
             pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm \
-            libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libswresample-dev libavfilter-dev
+            autoconf automake libtool yasm
 
       - name: Install Android SDK Command-line Tools
         run: |
@@ -182,29 +180,6 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Configure CMake for Android
-        run: |
-          # We explicitly define FFMPEG_PATH so the compiler finds <libavcodec/avcodec.h> in externals
-          cmake -B build-android -S citron_source \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-30 \
-            -DANDROID_ARM_NEON=ON \
-            -DENABLE_QT=OFF \
-            -DENABLE_SDL2=OFF \
-            -DENABLE_WEB_SERVICE=OFF \
-            -DENABLE_OPENSSL=OFF \
-            -DENABLE_FFMPEG=ON \
-            -DCITRON_USE_BUNDLED_VCPKG=ON \
-            -DCITRON_USE_BUNDLED_FFMPEG=ON \
-            -DFFMPEG_PATH="${{ github.workspace }}/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64" \
-            -DCITRON_ENABLE_LTO=ON
-
-      - name: Build with CMake
-        run: |
-          cmake --build build-android --config Release --parallel $(nproc)
-
       - name: Build APK with Gradle
         working-directory: ./citron_source/src/android
         run: |
@@ -212,7 +187,7 @@ jobs:
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
-            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DFFMPEG_PATH=${{ github.workspace }}/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 -DCITRON_ENABLE_LTO=ON"
+            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -243,12 +218,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch \
-            wget unzip curl git cmake build-essential \
-            pkg-config zip nasm perl \
-            autoconf automake libtool yasm \
-            libavcodec-dev libavformat-dev libavutil-dev \
-            libswscale-dev libswresample-dev libavfilter-dev
+          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
 
       - name: Clone Citron Source Code
         shell: bash
@@ -317,8 +287,14 @@ jobs:
           sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
 
           # --- Patch 3: 8 Elite & Cleanup Fixes (vulkan_device.cpp) ---
+          # 3a: Delete the original `device_id` variable declaration.
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
+          
+          # 3b: Replace all usages of the now-deleted `device_id` with its full source path to prevent compile errors.
           sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
+
+          # 3c: This is the corrected logic: Instead of adding a new variable, we use the `driver_id`
+          # variable that already exists in the correct C++ scope. This fixes the compile error.
           sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
           
           echo "All patches applied successfully."
@@ -339,6 +315,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            wget unzip curl git cmake build-essential \
+            pkg-config zip glslang-tools nasm perl \
+            autoconf automake libtool yasm
+
       - name: Install Android SDK Command-line Tools
         run: |
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
@@ -357,44 +341,25 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Configure CMake for Android
-        run: |
-          cmake -B build-android -S citron_source \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-30 \
-            -DANDROID_ARM_NEON=ON \
-            -DENABLE_QT=OFF \
-            -DENABLE_SDL2=OFF \
-            -DENABLE_WEB_SERVICE=OFF \
-            -DENABLE_OPENSSL=OFF \
-            -DENABLE_FFMPEG=ON \
-            -DCITRON_USE_BUNDLED_VCPKG=ON \
-            -DCITRON_USE_BUNDLED_FFMPEG=ON \
-            -DFFMPEG_PATH="${{ github.workspace }}/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64" \
-            -DCITRON_ENABLE_LTO=ON
-
-      - name: Build with CMake
-        run: |
-          cmake --build build-android --config Release --parallel $(nproc)
-
       - name: Compile Android APK (Snapdragon 8 Elite)
         working-directory: ./citron_source/src/android
         run: |
+          # The git command needs to run from the cloned git repo to get the correct commit count
           COUNT="$(git -C ../.. rev-list --count HEAD)"
           APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
           
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x ./gradlew
-          
-          # Added the FFMPEG_PATH to Gradle args too so it stays in sync
-          BUILD_ARGS="-PCITRON_ANDROID_ARGS=\"-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DFFMPEG_PATH=${{ github.workspace }}/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 -DCITRON_ENABLE_LTO=ON\""
-          
-          ./gradlew assembleMainlineRelease $BUILD_ARGS
+          ./gradlew assembleMainlineRelease \
+            -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
           
           APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::Build failed: No APK file was found."
+            exit 1
+          fi
+          
           mkdir -p artifacts
           mv "$APK_PATH" "artifacts/$APK_NAME.apk"
 
