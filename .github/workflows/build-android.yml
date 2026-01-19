@@ -107,7 +107,6 @@ jobs:
             ATTEMPT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
 
-            # 1. CRITICAL: Wipe the directory before every attempt
             rm -rf citron_source
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
@@ -137,20 +136,22 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Install Vulkan Headers 1.4 (Manual)
+      - name: Install Vulkan Headers 1.4
         run: |
-          # This fixes the "VulkanHeaders not compatible with 1.4.337" error
-          git clone --depth 1 -b v1.4.303 https://github.com/KhronosGroup/Vulkan-Headers.git
+          # Bypasses the VulkanHeaders 1.4 error by cloning the exact version required
+          git clone --depth 1 -b v1.4.304 https://github.com/KhronosGroup/Vulkan-Headers.git
           mkdir -p citron_source/externals/Vulkan-Headers
           cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
 
       - name: Download Pre-compiled FFmpeg for Android
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          # Ninja expects the files inside a specific directory name in externals
-          FFMPEG_DIR="citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64"
-          mkdir -p "$FFMPEG_DIR"
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C "$FFMPEG_DIR" --strip-components=1
+          mkdir -p citron_source/externals
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          
+          # Fix Ninja pathing: Map the binaries to where the Android build expects them
+          mkdir -p citron_source/src/android/app/externals
+          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -169,7 +170,7 @@ jobs:
           sudo apt-get install -y -qq \
             wget unzip curl git cmake build-essential \
             pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm libyaml-cpp-dev
+            autoconf automake libtool yasm
 
       - name: Install Android SDK Command-line Tools
         run: |
@@ -227,7 +228,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch libyaml-cpp-dev
+          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
 
       - name: Clone Citron Source Code
         shell: bash
@@ -241,7 +242,6 @@ jobs:
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
             echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
-
             rm -rf citron_source
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
@@ -271,18 +271,19 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
-      - name: Install Vulkan Headers 1.4 (Manual)
+      - name: Install Vulkan Headers 1.4
         run: |
-          git clone --depth 1 -b v1.4.303 https://github.com/KhronosGroup/Vulkan-Headers.git
+          git clone --depth 1 -b v1.4.304 https://github.com/KhronosGroup/Vulkan-Headers.git
           mkdir -p citron_source/externals/Vulkan-Headers
           cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
 
       - name: Download Pre-compiled FFmpeg for Android
         run: |
           git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          FFMPEG_DIR="citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64"
-          mkdir -p "$FFMPEG_DIR"
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C "$FFMPEG_DIR" --strip-components=1
+          mkdir -p citron_source/externals
+          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          mkdir -p citron_source/src/android/app/externals
+          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -293,19 +294,12 @@ jobs:
         working-directory: ./citron_source
         run: |
           echo "Applying Snapdragon 8 Elite patches..."
-
-          # --- Patch 1: Force System Driver Load (native.cpp) ---
           sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
-
-          # --- Patch 2: 8 Elite Fixes for Qualcomm (vulkan_device.h) ---
           sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
-
-          # --- Patch 3: 8 Elite & Cleanup Fixes (vulkan_device.cpp) ---
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
-          
           echo "All patches applied successfully."
 
       - name: Setup and Restore Cache
@@ -353,10 +347,8 @@ jobs:
       - name: Compile Android APK (Snapdragon 8 Elite)
         working-directory: ./citron_source/src/android
         run: |
-          # The git command needs to run from the cloned git repo to get the correct commit count
           COUNT="$(git -C ../.. rev-list --count HEAD)"
           APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
-          
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           export ANDROID_NDK="$ANDROID_NDK_HOME"
           chmod +x ./gradlew
@@ -368,7 +360,6 @@ jobs:
             echo "::error::Build failed: No APK file was found."
             exit 1
           fi
-          
           mkdir -p artifacts
           mv "$APK_PATH" "artifacts/$APK_NAME.apk"
 
