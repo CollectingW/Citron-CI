@@ -137,6 +137,13 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
+      - name: Download Pre-compiled FFmpeg for Android
+        run: |
+          mkdir -p citron_source/externals
+          cd citron_source/externals
+          wget -q https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
@@ -256,6 +263,13 @@ jobs:
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive --force
+
+      - name: Download Pre-compiled FFmpeg for Android
+        run: |
+          mkdir -p citron_source/externals
+          cd citron_source/externals
+          wget -q https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
 
       - name: Get Citron Commit Hash
         id: get_hash
