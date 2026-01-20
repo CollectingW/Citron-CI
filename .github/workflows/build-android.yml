@@ -24,7 +24,6 @@ jobs:
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           FEATURE="NULL"
-
           if git ls-remote --heads "$REPO_URL" "$FEATURE" | grep -q "$FEATURE"; then
             BRANCH_NAME="$FEATURE"
             FULL_HASH=$(git ls-remote "$REPO_URL" "$FEATURE" | cut -f1)
@@ -34,7 +33,6 @@ jobs:
             FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
             echo "⚠️ Feature branch not found, falling back to: $BRANCH_NAME"
           fi
-
           SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
           echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
@@ -86,30 +84,18 @@ jobs:
 
     steps:
       - name: Clone Citron Source Code
-        run: |
-          git clone --recursive https://git.citron-emu.org/Citron/Emulator.git citron_source
-          cd citron_source
-          if [ "${{ needs.check-version.outputs.branch_name }}" != "main" ]; then
-            git checkout "${{ needs.check-version.outputs.branch_name }}"
-            git submodule update --init --recursive
-          fi
+        uses: actions/checkout@v4
+        with:
+          repository: 'Citron/Emulator'
+          ref: ${{ needs.check-version.outputs.branch_name }}
+          path: 'citron_source'
+          submodules: 'recursive'
+          fetch-depth: 0
 
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
         run: echo "git_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Download FFmpeg and Vulkan Headers
-        run: |
-          # FFmpeg
-          git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
-          
-          # Vulkan
-          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
-          mkdir -p citron_source/externals/Vulkan-Headers
-          cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -117,16 +103,40 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libvulkan-dev
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            wget unzip curl git cmake build-essential \
+            pkg-config zip glslang-tools nasm perl \
+            autoconf automake libtool yasm
+
+      - name: Install Android SDK Command-line Tools
+        run: |
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
+
+      - name: Set up Android Environment Variables
+        run: |
+          echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
+          echo "$PWD/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: Build APK with Gradle
         working-directory: ./citron_source/src/android
         run: |
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
-            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_ENABLE_LTO=ON"
-
+            -Pcmake.args="-DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_USE_BUNDLED_VCPKG=ON -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_ENABLE_LTO=ON"
+      
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -141,56 +151,87 @@ jobs:
     outputs:
       git_hash: ${{ steps.get_hash.outputs.git_hash }}
       branch_name: ${{ needs.check-version.outputs.branch_name }}
+
     env:
       TARGET: Lyb
       MODEL: "8 Elite"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
 
     steps:
       - name: Clone Citron Source Code
+        uses: actions/checkout@v4
+        with:
+          repository: 'Citron/Emulator'
+          ref: ${{ needs.check-version.outputs.branch_name }}
+          path: 'citron_source'
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - name: Install Build Dependencies
         run: |
-          git clone --recursive https://git.citron-emu.org/Citron/Emulator.git citron_source
-          cd citron_source
-          if [ "${{ needs.check-version.outputs.branch_name }}" != "main" ]; then
-            git checkout "${{ needs.check-version.outputs.branch_name }}"
-            git submodule update --init --recursive
-          fi
+          sudo apt-get update -y
+          sudo apt-get install -y ccache glslang-tools libvulkan-dev python3-requests patch
 
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
         run: echo "git_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Download FFmpeg and Vulkan Headers
-        run: |
-          # FFmpeg
-          git clone --depth 1 https://git.citron-emu.org/Citron/ext-android-bin.git android-binaries
-          mkdir -p citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
-          tar -xJf android-binaries/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 --strip-components=1
-          
-          # Vulkan
-          git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
-          mkdir -p citron_source/externals/Vulkan-Headers
-          cp -r Vulkan-Headers/include citron_source/externals/Vulkan-Headers/
-
       - name: Apply All Patches (Snapdragon 8 Elite)
         working-directory: ./citron_source
         run: |
+          echo "Applying Snapdragon 8 Elite patches..."
           sed -i '/if (!handle) {/,/}/c\    if (!handle) {\n        handle = dlopen("libvulkan.so", RTLD_NOW);\n    }' src/android/app/src/main/jni/native.cpp
           sed -i '/bool IsShaderInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/bool IsExtShaderAtomicInt64Supported() const {/a \        const auto driver = GetDriverID();\n        if (driver == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {\n            return false;\n        }' src/video_core/vulkan_common/vulkan_device.h
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
+          echo "All patches applied successfully."
 
-      - name: Build APK with Gradle
+      - name: Setup and Restore Cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-android-ccache-${{ env.TARGET }}-${{ hashFiles('citron_source/**/CMakeLists.txt') }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Android SDK Command-line Tools
+        run: |
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
+
+      - name: Set up Android Environment Variables
+        run: |
+          echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
+          echo "$PWD/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Accept Android SDK licenses and install NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Compile Android APK (Snapdragon 8 Elite)
         working-directory: ./citron_source/src/android
         run: |
-          chmod +x gradlew
+          COUNT="$(git -C ../.. rev-list --count HEAD)"
+          APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          chmod +x ./gradlew
           ./gradlew assembleMainlineRelease \
-            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_ENABLE_LTO=ON"
+            -Pcmake.args="-DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_ENABLE_LTO=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON"
           
+          APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
           mkdir -p artifacts
-          mv app/build/outputs/apk/mainline/release/*.apk artifacts/$APK_NAME.apk
+          mv "$APK_PATH" "artifacts/$APK_NAME.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -238,9 +279,9 @@ jobs:
           files: "*.apk"
           body: |
             **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://git.citron-emu.org/Citron/Emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
-
+            
             This build is based on the latest Citron emulator source code from the **${{ env.BRANCH_NAME }}** branch.
-
+            
             **Build Details:**
             - Platform: Android (arm64-v8a)
             - Build Type: Release with LTO enabled
