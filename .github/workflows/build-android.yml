@@ -78,8 +78,9 @@ jobs:
             echo "should_build=false" >> $GITHUB_OUTPUT
             echo "⏭️ No changes - skipping build"
           fi
+  
   build-android:
-    name: Build Android APK
+    name: Build Android APK (ARM64)
     needs: [check-version]
     if: needs.check-version.outputs.should_build == 'true'
     runs-on: ubuntu-latest
@@ -93,37 +94,27 @@ jobs:
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           FEATURE="feature/android-game-file-extraction"
-          
           ATTEMPT=0
           MAX_ATTEMPTS=999
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning repository..."
-            # 1. CRITICAL: Wipe the directory before every attempt
+            echo "Attempt $ATTEMPT: Cloning..."
             rm -rf citron_source
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
-              echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then
-                echo "✅ Clone successful."
-                exit 0
-              fi
+              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then exit 0; fi
             else
-              echo "📦 Cloning main branch"
-              if git clone --recursive "$REPO_URL" citron_source; then
-                echo "✅ Clone successful."
-                exit 0
-              fi
+              if git clone --recursive "$REPO_URL" citron_source; then exit 0; fi
             fi
-            echo "⚠️ Clone failed. Retrying in 15 seconds..."
             sleep 15
           done
-          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
+
       - name: Force Update Submodules
         working-directory: ./citron_source
         run: |
           git submodule sync --recursive
           git submodule update --init --recursive --force
+
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
@@ -138,26 +129,21 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            wget unzip curl git cmake build-essential \
-            pkg-config zip glslang-tools nasm perl \
-            autoconf automake libtool yasm
-      - name: Install Android SDK Command-line Tools
+          sudo apt-get install -y -qq wget unzip curl git cmake build-essential pkg-config zip glslang-tools nasm perl autoconf automake libtool yasm
+
+      - name: Install Android SDK/NDK
         run: |
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q commandlinetools-linux-11076708_latest.zip
           mkdir -p android-sdk/cmdline-tools
           mv cmdline-tools android-sdk/cmdline-tools/latest
-      - name: Set up Android Environment Variables
-        run: |
           echo "ANDROID_HOME=$PWD/android-sdk" >> $GITHUB_ENV
           echo "$PWD/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
-      - name: Accept Android SDK licenses and install NDK
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-      - name: Build APK with Gradle
+          yes | $PWD/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          $PWD/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$PWD/android-sdk/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Build ARM64 APK with Gradle
         working-directory: ./citron_source/src/android
         run: |
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
@@ -165,11 +151,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
             -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
+          
+          mkdir -p artifacts
+          mv app/build/outputs/apk/mainline/release/app-mainline-release.apk artifacts/Citron-Standard-Nightly.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: citron-android-nightly
-          path: citron_source/src/android/app/build/outputs/apk/mainline/release/*.apk
+          path: citron_source/src/android/artifacts/*.apk
 
   build-android-x86_64:
     name: Build Android APK (x86_64)
@@ -235,12 +225,15 @@ jobs:
           ./gradlew assembleMainlineRelease \
             -Pandroid.injected.abi.list=x86_64 \
             -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON"
+          
+          mkdir -p artifacts
+          mv app/build/outputs/apk/mainline/release/app-mainline-release.apk artifacts/Citron-x86_64-Nightly.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: citron-android-x86_64
-          path: citron_source/src/android/app/build/outputs/apk/mainline/release/*.apk
+          path: citron_source/src/android/artifacts/*.apk
 
   build-android-8elite:
     name: Build Android APK (Snapdragon 8 Elite)
