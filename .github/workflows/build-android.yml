@@ -120,21 +120,14 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Pre-seed FFmpeg Binaries (Prevent Network Failure)
+      - name: Pre-seed FFmpeg Binaries
         run: |
-          # 1. Download the archive
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          
-          # 2. Extract it once
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          
-          # 3. Create the directories for BOTH the manual build and the Gradle build
+          mkdir -p citron_source/externals
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          # Keep this for the manual build step
           mkdir -p build-android/externals
-          mkdir -p citron_source/src/android/app/externals
-          
-          # 4. Copy the extracted folder into both locations
-          cp -r ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
-          cp -r ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
+          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
           
       - name: Get Citron Commit Hash
         id: get_hash
@@ -192,7 +185,7 @@ jobs:
         run: |
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           chmod +x gradlew
-          ./gradlew assembleMainlineRelease -Pcmake.args="-DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF"
+          ./gradlew assembleMainlineRelease -Pcmake.args="-DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_USE_BUNDLED_FFMPEG=ON -DFFMPEG_PATH=$GITHUB_WORKSPACE/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64"
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -255,21 +248,14 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Pre-seed FFmpeg Binaries (Prevent Network Failure)
+      - name: Pre-seed FFmpeg Binaries
         run: |
-          # 1. Download the archive
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          
-          # 2. Extract it once
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          
-          # 3. Create the directories for BOTH the manual build and the Gradle build
+          mkdir -p citron_source/externals
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
+          # Keep this for the manual build step
           mkdir -p build-android/externals
-          mkdir -p citron_source/src/android/app/externals
-          
-          # 4. Copy the extracted folder into both locations
-          cp -r ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
-          cp -r ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
+          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
           
       - name: Get Citron Commit Hash
         id: get_hash
@@ -360,7 +346,7 @@ jobs:
           
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
           chmod +x ./gradlew
-          BUILD_ARGS="-PCITRON_ANDROID_ARGS=\"-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON\""
+          BUILD_ARGS="-PCITRON_ANDROID_ARGS=\"-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DFFMPEG_PATH=$GITHUB_WORKSPACE/citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64\""
           ./gradlew assembleMainlineRelease $BUILD_ARGS
           
           APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
