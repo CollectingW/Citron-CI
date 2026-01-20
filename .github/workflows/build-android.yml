@@ -119,6 +119,13 @@ jobs:
           done
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
+
+      - name: Pre-seed FFmpeg Binaries
+        run: |
+          mkdir -p build-android/externals
+          wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C build-android/externals/
+          
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
@@ -237,6 +244,13 @@ jobs:
           done
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
+
+      - name: Pre-seed FFmpeg Binaries (Prevent Network Failure)
+        run: |
+          mkdir -p build-android/externals
+          wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C build-android/externals/
+          
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
