@@ -120,11 +120,21 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Pre-seed FFmpeg Binaries
+      - name: Pre-seed FFmpeg Binaries (Prevent Network Failure)
         run: |
-          mkdir -p build-android/externals
+          # 1. Download the archive
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C build-android/externals/
+          
+          # 2. Extract it once
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          
+          # 3. Create the directories for BOTH the manual build and the Gradle build
+          mkdir -p build-android/externals
+          mkdir -p citron_source/src/android/app/externals
+          
+          # 4. Copy the extracted folder into both locations
+          cp -r ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
+          cp -r ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
           
       - name: Get Citron Commit Hash
         id: get_hash
@@ -247,9 +257,19 @@ jobs:
 
       - name: Pre-seed FFmpeg Binaries (Prevent Network Failure)
         run: |
-          mkdir -p build-android/externals
+          # 1. Download the archive
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C build-android/externals/
+          
+          # 2. Extract it once
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz
+          
+          # 3. Create the directories for BOTH the manual build and the Gradle build
+          mkdir -p build-android/externals
+          mkdir -p citron_source/src/android/app/externals
+          
+          # 4. Copy the extracted folder into both locations
+          cp -r ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
+          cp -r ffmpeg-android-v5.1.LTS-aarch64 citron_source/src/android/app/externals/
           
       - name: Get Citron Commit Hash
         id: get_hash
