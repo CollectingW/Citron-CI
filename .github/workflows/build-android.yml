@@ -136,7 +136,7 @@ jobs:
           mv citron_source/externals citron_source/temp_ext && mkdir -p citron_source/externals && mv citron_source/temp_ext citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
           mv citron_source/src/android/app/externals citron_source/src/android/app/temp_ext && mkdir -p citron_source/src/android/app/externals && mv citron_source/src/android/app/temp_ext citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64
 
-          ls -R citron_source/src/android/app/extern/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
+          ls -l citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
           
       - name: Get Citron Commit Hash
         id: get_hash
@@ -273,7 +273,7 @@ jobs:
           mv citron_source/externals citron_source/temp_ext && mkdir -p citron_source/externals && mv citron_source/temp_ext citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
           mv citron_source/src/android/app/externals citron_source/src/android/app/temp_ext && mkdir -p citron_source/src/android/app/externals && mv citron_source/src/android/app/temp_ext citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64
 
-          ls -R citron_source/src/android/app/extern/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
+          ls -l citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
           
       - name: Get Citron Commit Hash
         id: get_hash
