@@ -84,13 +84,26 @@ jobs:
 
     steps:
       - name: Clone Citron Source Code
-        uses: actions/checkout@v4
-        with:
-          repository: 'Citron/Emulator'
-          ref: ${{ needs.check-version.outputs.branch_name }}
-          path: 'citron_source'
-          submodules: 'recursive'
-          fetch-depth: 0
+        shell: bash
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          ATTEMPT=0
+          MAX_ATTEMPTS=5
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            rm -rf citron_source
+            if git clone --recursive --depth 1 -b "${{ needs.check-version.outputs.branch_name }}" "$REPO_URL" citron_source; then
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
+
+      - name: Force Update Submodules
+        working-directory: ./citron_source
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -159,13 +172,26 @@ jobs:
 
     steps:
       - name: Clone Citron Source Code
-        uses: actions/checkout@v4
-        with:
-          repository: 'Citron/Emulator'
-          ref: ${{ needs.check-version.outputs.branch_name }}
-          path: 'citron_source'
-          submodules: 'recursive'
-          fetch-depth: 0
+        shell: bash
+        run: |
+          REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
+          ATTEMPT=0
+          MAX_ATTEMPTS=5
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            rm -rf citron_source
+            if git clone --recursive --depth 1 -b "${{ needs.check-version.outputs.branch_name }}" "$REPO_URL" citron_source; then
+              exit 0
+            fi
+            sleep 15
+          done
+          exit 1
+
+      - name: Force Update Submodules
+        working-directory: ./citron_source
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
 
       - name: Install Build Dependencies
         run: |
