@@ -99,24 +99,15 @@ jobs:
           done
           exit 1
 
-      - name: Force Fix FFmpeg Binaries (Direct Raw Link)
+      - name: Force Fix FFmpeg Binaries
         working-directory: ./citron_source/externals
         run: |
-          echo "📥 Manually fetching FFmpeg Android binaries using Browser User-Agent..."
           RAW_URL="https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz"
           UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           wget -q --user-agent="$UA" "$RAW_URL" -O ffmpeg.tar.xz
-          
-          echo "📦 Extracting..."
           tar -xJf ffmpeg.tar.xz
-          
-          echo "🔍 Hard Verification Check..."
-          if [ -f "ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so" ]; then
-            echo "✅ SUCCESS: libavcodec.so found in expected path."
-            rm ffmpeg.tar.xz
-          else
-            echo "❌ ERROR: FFmpeg binaries are missing or download was blocked by server!"
-            ls -R ffmpeg-android-v5.1.LTS-aarch64 || echo "Folder does not even exist."
+          if [ ! -f "ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so" ]; then 
+            echo "❌ Verification failed"
             exit 1
           fi
 
@@ -161,6 +152,8 @@ jobs:
         working-directory: ./citron_source/src/android
         run: |
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          # FORCE ABSOLUTE PATH FOR FFMPEG USING THE VARIABLE IN FindFFmpeg.cmake
+          export FFMPEG_DIR="$(pwd)/../../externals/ffmpeg-android-v5.1.LTS-aarch64"
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
             -Pcmake.args="-DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_USE_BUNDLED_VCPKG=ON -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=OFF -DCITRON_ENABLE_LTO=ON"
@@ -192,7 +185,7 @@ jobs:
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
           git clone --recursive --depth 1 -b "${{ needs.check-version.outputs.branch_name }}" "$REPO_URL" citron_source
 
-      - name: Force Fix FFmpeg Binaries (Direct Raw Link)
+      - name: Force Fix FFmpeg Binaries
         working-directory: ./citron_source/externals
         run: |
           RAW_URL="https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz"
@@ -258,6 +251,8 @@ jobs:
           COUNT="$(git -C ../.. rev-list --count HEAD)"
           APK_NAME="Citron-${COUNT}-Android-${MODEL}-${TARGET}"
           export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          # FORCE ABSOLUTE PATH FOR FFMPEG
+          export FFMPEG_DIR="$(pwd)/../../externals/ffmpeg-android-v5.1.LTS-aarch64"
           chmod +x ./gradlew
           ./gradlew assembleMainlineRelease \
             -Pcmake.args="-DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_USE_BUNDLED_VCPKG=ON -DCITRON_ENABLE_LTO=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON"
