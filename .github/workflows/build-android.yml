@@ -120,14 +120,23 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Pre-seed FFmpeg Binaries
+      - name: Pre-seed FFmpeg Binaries (No Nesting)
         run: |
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          mkdir -p citron_source/externals
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
-          # Keep this for the manual build step
+          
           mkdir -p build-android/externals
-          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
+          mkdir -p citron_source/externals
+          mkdir -p citron_source/src/android/app/externals
+          
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C build-android/externals/
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C citron_source/externals/
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C citron_source/src/android/app/externals/
+
+          mv build-android/externals build-android/temp_ext && mkdir -p build-android/externals && mv build-android/temp_ext build-android/externals/ffmpeg-android-v5.1.LTS-aarch64
+          mv citron_source/externals citron_source/temp_ext && mkdir -p citron_source/externals && mv citron_source/temp_ext citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
+          mv citron_source/src/android/app/externals citron_source/src/android/app/temp_ext && mkdir -p citron_source/src/android/app/externals && mv citron_source/src/android/app/temp_ext citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64
+
+          ls -R citron_source/src/android/app/extern/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
           
       - name: Get Citron Commit Hash
         id: get_hash
@@ -248,14 +257,23 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Pre-seed FFmpeg Binaries
+      - name: Pre-seed FFmpeg Binaries (No Nesting)
         run: |
           wget -q https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz
-          mkdir -p citron_source/externals
-          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz -C citron_source/externals/
-          # Keep this for the manual build step
+          
           mkdir -p build-android/externals
-          cp -r citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64 build-android/externals/
+          mkdir -p citron_source/externals
+          mkdir -p citron_source/src/android/app/externals
+          
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C build-android/externals/
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C citron_source/externals/
+          tar -xJf ffmpeg-android-v5.1.LTS-aarch64.tar.xz --strip-components=1 -C citron_source/src/android/app/externals/
+
+          mv build-android/externals build-android/temp_ext && mkdir -p build-android/externals && mv build-android/temp_ext build-android/externals/ffmpeg-android-v5.1.LTS-aarch64
+          mv citron_source/externals citron_source/temp_ext && mkdir -p citron_source/externals && mv citron_source/temp_ext citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64
+          mv citron_source/src/android/app/externals citron_source/src/android/app/temp_ext && mkdir -p citron_source/src/android/app/externals && mv citron_source/src/android/app/temp_ext citron_source/src/android/app/externals/ffmpeg-android-v5.1.LTS-aarch64
+
+          ls -R citron_source/src/android/app/extern/ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so || (echo "FATAL: Pathing is wrong" && exit 1)
           
       - name: Get Citron Commit Hash
         id: get_hash
