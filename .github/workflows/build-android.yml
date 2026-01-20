@@ -99,11 +99,26 @@ jobs:
           done
           exit 1
 
-      - name: Force Update Submodules
-        working-directory: ./citron_source
+      - name: Force Fix FFmpeg Binaries (Direct Raw Link)
+        working-directory: ./citron_source/externals
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --force
+          echo "📥 Manually fetching FFmpeg Android binaries using Browser User-Agent..."
+          RAW_URL="https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz"
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          wget -q --user-agent="$UA" "$RAW_URL" -O ffmpeg.tar.xz
+          
+          echo "📦 Extracting..."
+          tar -xJf ffmpeg.tar.xz
+          
+          echo "🔍 Hard Verification Check..."
+          if [ -f "ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so" ]; then
+            echo "✅ SUCCESS: libavcodec.so found in expected path."
+            rm ffmpeg.tar.xz
+          else
+            echo "❌ ERROR: FFmpeg binaries are missing or download was blocked by server!"
+            ls -R ffmpeg-android-v5.1.LTS-aarch64 || echo "Folder does not even exist."
+            exit 1
+          fi
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -175,23 +190,16 @@ jobs:
         shell: bash
         run: |
           REPO_URL="https://git.citron-emu.org/Citron/Emulator.git"
-          ATTEMPT=0
-          MAX_ATTEMPTS=5
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            rm -rf citron_source
-            if git clone --recursive --depth 1 -b "${{ needs.check-version.outputs.branch_name }}" "$REPO_URL" citron_source; then
-              exit 0
-            fi
-            sleep 15
-          done
-          exit 1
+          git clone --recursive --depth 1 -b "${{ needs.check-version.outputs.branch_name }}" "$REPO_URL" citron_source
 
-      - name: Force Update Submodules
-        working-directory: ./citron_source
+      - name: Force Fix FFmpeg Binaries (Direct Raw Link)
+        working-directory: ./citron_source/externals
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --force
+          RAW_URL="https://git.citron-emu.org/Citron/ext-android-bin/raw/branch/main/ffmpeg/ffmpeg-android-v5.1.LTS-aarch64.tar.xz"
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          wget -q --user-agent="$UA" "$RAW_URL" -O ffmpeg.tar.xz
+          tar -xJf ffmpeg.tar.xz
+          if [ ! -f "ffmpeg-android-v5.1.LTS-aarch64/lib/libavcodec.so" ]; then exit 1; fi
 
       - name: Install Build Dependencies
         run: |
@@ -213,7 +221,6 @@ jobs:
           sed -i '/const auto device_id =/d' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/\bdevice_id\b/properties.properties.deviceID/g' src/video_core/vulkan_common/vulkan_device.cpp
           sed -i 's/if (is_qualcomm) {/if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {/' src/video_core/vulkan_common/vulkan_device.cpp
-          echo "All patches applied successfully."
 
       - name: Setup and Restore Cache
         uses: actions/cache@v4
