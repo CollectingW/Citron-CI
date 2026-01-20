@@ -137,6 +137,13 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --recursive --force
 
+      - name: Download and Prepare Bundled FFmpeg
+        run: |
+          mkdir -p citron_source/externals
+          curl -L "https://github.com/CollectingW/Citron-CI/releases/download/dep/ffmpeg-android-v5.1.LTS-aarch64.tar.xz" -o ffmpeg.tar.xz
+          tar -xf ffmpeg.tar.xz -C citron_source/externals/
+          ls -R citron_source/externals/ffmpeg-android-v5.1.LTS-aarch64/lib/
+
       - name: Get Citron Commit Hash
         id: get_hash
         working-directory: ./citron_source
