@@ -9,7 +9,15 @@
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Zephyron-Dev/Citron-CI&type=date&legend=top-left)](https://www.star-history.com/#Zephyron-Dev/Citron-CI&type=date&legend=top-left)
 
-This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** on Linux, and also Windows & Android builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
+This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** on Linux, and also Windows, Android & macOS builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
+
+Would you like to submit a compatibility report for the emulator? You can do so here:
+
+* [Submit Compatibility Report](https://github.com/CollectingW/Citron-Compatability)
+
+---
+
+Direct links for other information you may need can also be found below:
 
 * [Latest Commits Can Be Found Here](https://git.citron-emu.org/Citron/Emulator/commits/branch/main)
 
@@ -21,7 +29,7 @@ This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** 
 
 # READ THIS IF YOU HAVE ISSUES
 
-If you are on wayland (specially GNOME wayland) and get freezes or crahes you are likely affected by this issue that affects all Qt6 apps: https://github.com/Zephyron-Dev/Citron-CI/issues/50
+If you are on wayland (specially GNOME wayland) and get freezes or crashes, you are likely affected by this issue that affects all Qt6 apps: https://github.com/Zephyron-Dev/Citron-CI/issues/50
 
 To fix it simply set the env variable `QT_QPA_PLATFORM=xcb`
 
@@ -51,3 +59,7 @@ This appimage works without fuse2 as it can use fuse3 instead, it can also work 
   </a>
 </details>
 
+---
+
+Thank-you for being apart of & using Citron, we value all members of the community whom help shape the emulator into what it is today!
+- The Citron Team
