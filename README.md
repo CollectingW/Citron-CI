@@ -9,6 +9,8 @@
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Zephyron-Dev/Citron-CI&type=date&legend=top-left)](https://www.star-history.com/#Zephyron-Dev/Citron-CI&type=date&legend=top-left)
 
+---
+
 This repository makes Nightly builds for **x86_64** (generic) and **x86_64_v3** on Linux, and also Windows, Android & macOS builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
 
 Would you like to submit a compatibility report for the emulator? You can do so here:
@@ -27,23 +29,25 @@ Direct links for other information you may need can also be found below:
 
 * [Latest Windows Nightly Release](https://github.com/Zephyron-Dev/Citron-CI/releases/tag/nightly-windows)
 
+* [Latest macOS Nightly Release](https://github.com/Zephyron-Dev/Citron-CI/releases/tag/nightly-macos)
+
+---
+
 # READ THIS IF YOU HAVE ISSUES
 
 If you are on wayland (specially GNOME wayland) and get freezes or crashes, you are likely affected by this issue that affects all Qt6 apps: https://github.com/Zephyron-Dev/Citron-CI/issues/50
 
 To fix it simply set the env variable `QT_QPA_PLATFORM=xcb`
 
----
-
-**Looking for AppImages of other emulators? Check:** [AnyLinux-AppImages](https://pkgforge-dev.github.io/Anylinux-AppImages/) 
+**Also, are you looking for AppImages of other emulators? Check:** [AnyLinux-AppImages](https://pkgforge-dev.github.io/Anylinux-AppImages/) 
 
 ----
 
 AppImage made using [sharun](https://github.com/VHSgunzo/sharun), which makes it extremely easy to turn any binary into a portable package without using containers or similar tricks.
 
-**This AppImage bundles everything and should work on any linux distro, even on musl based ones.**
+**These AppImages bundle everything and should work on any Linux distro, even on musl based ones.**
 
-It is possible that this appimage may fail to work with appimagelauncher, I recommend these alternatives instead: 
+It is possible that the AppImages may fail to work with appimagelauncher, we recommend these alternatives instead: 
 
 * [AM](https://github.com/ivan-hc/AM) `am -i citron` or `appman -i citron`
 
@@ -51,13 +55,15 @@ It is possible that this appimage may fail to work with appimagelauncher, I reco
 
 * [soar](https://github.com/pkgforge/soar) `soar install citron`
 
-This appimage works without fuse2 as it can use fuse3 instead, it can also work without fuse at all thanks to the [uruntime](https://github.com/VHSgunzo/uruntime)
+These AppImages works without fuse2 as it can use fuse3 instead, it can also work without fuse at all thanks to the [uruntime](https://github.com/VHSgunzo/uruntime)
 
 <details>
   <summary><b><i>raison d'être</i></b></summary>
     <img src="https://github.com/user-attachments/assets/d40067a6-37d2-4784-927c-2c7f7cc6104b" alt="Inspiration Image">
   </a>
 </details>
+
+**The following information above and the creation of the AppImages Citron currently creates & distributes derives from Pkgforges previous work. You can find their repository here: https://github.com/pkgforge-dev/Citron-AppImage**
 
 ---
 
