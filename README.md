@@ -11,7 +11,7 @@
 
 ---
 
-This repository makes Nightly builds for **x86_64** (Standard), **x86_64_v3** (CPU's that are from 2013+) & **aarch64** on Linux, and also Windows, Android & macOS builds! If your CPU is less than 10 years old, for Linux, use the x86_64_v3 build since it has a significant performance boost. These builds are all produced @ 12 AM UTC every single day.
+This repository makes Nightly builds for **x86_64** (Standard), **x86_64_v3** (CPU's that are from 2013+) & **aarch64** on Linux, and also Windows, Android & macOS builds! These builds are all produced @ 12 AM UTC every single day.
 
 Would you like to submit a compatibility report for the emulator? You can do so here:
 
