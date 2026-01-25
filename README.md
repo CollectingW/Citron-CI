@@ -1,4 +1,4 @@
-# Citron-Nightly 🐧
+# The Official Citron-CI 🍋
 
 [![GitHub Downloads](https://img.shields.io/github/downloads/Zephyron-Dev/Citron-CI/total?logo=github&label=GitHub%20Downloads)](https://github.com/Zephyron-Dev/Citron-CI/releases/latest)
 [![Build Citron (Android)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-android.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-android.yml)
