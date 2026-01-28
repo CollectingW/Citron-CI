@@ -141,7 +141,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./emulator
-        run: chmod +x ./get-dependencies.sh && ./get-dependencies.sh
+        run: pacman -Syu --noconfirm --needed vulkan-headers chmod +x ./get-dependencies.sh && ./get-dependencies.sh
 
       - name: Build Citron from source
         working-directory: ./emulator
