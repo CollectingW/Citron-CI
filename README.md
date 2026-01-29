@@ -4,6 +4,7 @@
 [![Build Citron (Android)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-android.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-android.yml)
 [![Build Citron (Windows)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-windows.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-windows.yml)
 [![Build Citron (Linux)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-linux.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-linux.yml)
+[![Build Citron (macOS)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-macos.yml/badge.svg)](https://github.com/Zephyron-Dev/Citron-CI/actions/workflows/build-macos.yml)
 
 ## Star History
 
