@@ -145,7 +145,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCMAKE_PREFIX_PATH="$OPENAL_DIR;$SDL2_DIR" \
-            -DCITRON_BUILD_TYPE=Release \
+            -DCITRON_BUILD_TYPE=Stable \
             -DCITRON_USE_FASTER_LD=OFF \
             -DCITRON_USE_BUNDLED_VCPKG=OFF \
             -DENABLE_QT=ON \
