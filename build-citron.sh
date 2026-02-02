@@ -5,7 +5,7 @@ set -ex
 ARCH="${ARCH:-$(uname -m)}"
 
 # --- PGO Profile Setup (if available) ---
-PGO_PROFILE_PATH="$(pwd)/profiles/pgo/default.profdata"
+PGO_PROFILE_PATH="$(git rev-parse --show-toplevel)/profiles/pgo/default.profdata"
 if [ -f "$PGO_PROFILE_PATH" ]; then
     echo "✅ Found PGO profile data at $PGO_PROFILE_PATH, enabling PGO optimization"
     PGO_FLAGS="-fprofile-use=$PGO_PROFILE_PATH"
