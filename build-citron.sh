@@ -5,7 +5,7 @@ set -ex
 ARCH="${ARCH:-$(uname -m)}"
 
 # --- PGO Profile Setup (if available) ---
-PGO_PROFILE_PATH="$(git rev-parse --show-toplevel)/profiles/pgo/default.profdata"
+PGO_PROFILE_PATH="$(pwd)/profiles/pgo/default.profdata"
 if [ -f "$PGO_PROFILE_PATH" ]; then
     echo "✅ Found PGO profile data at $PGO_PROFILE_PATH, enabling PGO optimization"
     PGO_FLAGS="-fprofile-use=$PGO_PROFILE_PATH"
@@ -57,9 +57,15 @@ JOBS=$(nproc --all)
 
 mkdir build && cd build
 
-# Configure the build using CMake
+if [ -f "$PGO_PROFILE_PATH" ]; then
+    PGO_CMAKE_FLAGS="-DCITRON_ENABLE_PGO_USE=ON"
+else
+    PGO_CMAKE_FLAGS=""
+fi
+
 cmake .. -GNinja \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+    $PGO_CMAKE_FLAGS \
     -DCITRON_USE_BUNDLED_VCPKG=OFF \
     -DCITRON_USE_BUNDLED_QT=OFF \
     -DUSE_SYSTEM_QT=ON \
