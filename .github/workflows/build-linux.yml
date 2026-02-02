@@ -143,6 +143,20 @@ jobs:
         working-directory: ./emulator
         run: chmod +x ./get-dependencies.sh && ./get-dependencies.sh
 
+      - name: Download and Extract PGO Profile Data
+        working-directory: ./emulator
+        run: |
+          mkdir -p profiles/pgo
+          wget https://github.com/CollectingW/Citron-CI/releases/download/pgo-data/pgo-profiles.tar.gz
+          tar -xzf pgo-profiles.tar.gz
+          if [ -f profiles/pgo/default.profdata ]; then
+            echo "✅ PGO profile extracted successfully"
+            ls -lh profiles/pgo/default.profdata
+          else
+            echo "❌ ERROR: PGO profile not found after extraction"
+            exit 1
+          fi
+
       - name: Build Citron from source
         working-directory: ./emulator
         run: |
