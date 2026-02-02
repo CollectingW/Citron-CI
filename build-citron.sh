@@ -4,12 +4,22 @@ set -ex
 # --- Architecture and Compiler Flag Setup ---
 ARCH="${ARCH:-$(uname -m)}"
 
-if [ "$1" = 'v3' ] && [ "$ARCH" = 'x86_64' ]; then
-    ARCH_FLAGS="-march=x86-64-v3 -O3 -USuccess -UNone -fuse-ld=lld"
-elif [ "$ARCH" = 'x86_64' ]; then
-    ARCH_FLAGS="-march=x86-64 -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld"
+# --- PGO Profile Setup (if available) ---
+PGO_PROFILE_PATH="$(pwd)/profiles/pgo/default.profdata"
+if [ -f "$PGO_PROFILE_PATH" ]; then
+    echo "✅ Found PGO profile data at $PGO_PROFILE_PATH, enabling PGO optimization"
+    PGO_FLAGS="-fprofile-use=$PGO_PROFILE_PATH"
 else
-    ARCH_FLAGS="-march=armv8-a -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld"
+    echo "⚠️ No PGO profile found, building without PGO"
+    PGO_FLAGS=""
+fi
+
+if [ "$1" = 'v3' ] && [ "$ARCH" = 'x86_64' ]; then
+    ARCH_FLAGS="-march=x86-64-v3 -O3 -USuccess -UNone -fuse-ld=lld $PGO_FLAGS"
+elif [ "$ARCH" = 'x86_64' ]; then
+    ARCH_FLAGS="-march=x86-64 -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld $PGO_FLAGS"
+else
+    ARCH_FLAGS="-march=armv8-a -mtune=generic -O3 -USuccess -UNone -fuse-ld=lld $PGO_FLAGS"
 fi
 
 # --- Source Code Checkout and Versioning ---
